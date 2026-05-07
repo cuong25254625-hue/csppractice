@@ -8,6 +8,7 @@ const XLSX = require("xlsx");
 
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
+const MATHJAX_DIR = path.join(ROOT, "node_modules", "mathjax");
 const DATA_DIR = path.join(ROOT, "data");
 const DB_FILE = path.join(DATA_DIR, "db.json");
 const PAPERS_FILE = path.join(DATA_DIR, "papers.json");
@@ -24,7 +25,9 @@ const contentTypes = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
-  ".ico": "image/x-icon"
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2"
 };
 
 function readJson(file, fallback) {
@@ -1085,6 +1088,18 @@ async function api(req, res) {
 
 function staticFile(req, res) {
   const urlPath = decodeURIComponent(req.url.split("?")[0]);
+  if (urlPath.startsWith("/vendor/mathjax/")) {
+    const requestPath = urlPath.replace("/vendor/mathjax/", "");
+    const file = path.normalize(path.join(MATHJAX_DIR, requestPath));
+    if (!file.startsWith(MATHJAX_DIR)) return send(res, 403, "禁止访问");
+    fs.readFile(file, (error, content) => {
+      if (error) return send(res, 404, "未找到文件");
+      const ext = path.extname(file).toLowerCase();
+      res.writeHead(200, { "Content-Type": contentTypes[ext] || "application/octet-stream" });
+      res.end(content);
+    });
+    return;
+  }
   const requestPath = urlPath === "/" ? "/index.html" : urlPath;
   const file = path.normalize(path.join(PUBLIC_DIR, requestPath));
   if (!file.startsWith(PUBLIC_DIR)) return send(res, 403, "禁止访问");

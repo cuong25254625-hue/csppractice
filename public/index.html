@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>初赛考级练习平台</title>
     <link rel="stylesheet" href="/styles.css">
+    <script>
+      window.MathJax = {
+        tex: {
+          inlineMath: [["$", "$"], ["\\(", "\\)"]],
+          displayMath: [["$$", "$$"], ["\\[", "\\]"]]
+        },
+        startup: { typeset: false }
+      };
+    </script>
+    <script src="/vendor/mathjax/tex-chtml.js" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -76,6 +86,27 @@
         <div class="auth-actions">
           <button class="primary-btn" type="button" id="insertCodeSnippet">插入到题目</button>
           <button class="secondary-btn" type="button" id="cancelCodeInsert">取消</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="formula-dialog" id="formulaInsertDialog">
+      <form class="formula-insert-box" method="dialog">
+        <div class="dialog-head">
+          <div>
+            <h2>插入公式</h2>
+            <p>输入 LaTeX 公式，确认预览后插入到当前题目描述。</p>
+          </div>
+          <button class="icon-btn" type="button" id="closeFormulaInsert" aria-label="关闭">×</button>
+        </div>
+        <div class="formula-insert-grid">
+          <textarea id="formulaSnippetInput" spellcheck="false" placeholder="例如：a^2 + b^2 = c^2"></textarea>
+          <div class="formula-preview rich-text" id="formulaSnippetPreview"></div>
+        </div>
+        <div class="auth-actions">
+          <label class="inline-check"><input id="formulaDisplayMode" type="checkbox" checked>独立成行</label>
+          <button class="primary-btn" type="button" id="insertFormulaSnippet">插入到题目</button>
+          <button class="secondary-btn" type="button" id="cancelFormulaInsert">取消</button>
         </div>
       </form>
     </dialog>

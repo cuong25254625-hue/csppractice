@@ -30,6 +30,13 @@ const codeSnippetPreview = document.querySelector("#codeSnippetPreview");
 const insertCodeSnippet = document.querySelector("#insertCodeSnippet");
 const closeCodeInsert = document.querySelector("#closeCodeInsert");
 const cancelCodeInsert = document.querySelector("#cancelCodeInsert");
+const formulaInsertDialog = document.querySelector("#formulaInsertDialog");
+const formulaSnippetInput = document.querySelector("#formulaSnippetInput");
+const formulaSnippetPreview = document.querySelector("#formulaSnippetPreview");
+const formulaDisplayMode = document.querySelector("#formulaDisplayMode");
+const insertFormulaSnippet = document.querySelector("#insertFormulaSnippet");
+const closeFormulaInsert = document.querySelector("#closeFormulaInsert");
+const cancelFormulaInsert = document.querySelector("#cancelFormulaInsert");
 let pendingMarkdownTextarea = null;
 
 function escapeHtml(value) {
@@ -48,12 +55,17 @@ function nl2br(value) {
 function renderInlineMarkdown(value) {
   let html = escapeHtml(value);
   html = html.replace(/!\[([^\]]*)\]\(((?:https?:\/\/|\/)[^)\s]+)\)/g, '<img class="markdown-image" src="$2" alt="$1">');
-  html = html.replace(/\$([^$\n]+)\$/g, '<span class="math-inline">$1</span>');
+  html = html.replace(/\$([^$\n]+)\$/g, (_, formula) => `<span class="math-inline">\\(${formula}\\)</span>`);
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
   html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
   return html;
+}
+
+function typesetMath(root = app) {
+  if (!window.MathJax?.typesetPromise) return;
+  window.MathJax.typesetPromise([root]).catch(() => {});
 }
 
 function renderMarkdown(value) {
@@ -83,7 +95,7 @@ function renderMarkdownBlocks(value) {
   const blocks = String(value || "").split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
   return blocks.map((block) => {
     if (/^\$\$[\s\S]*\$\$$/.test(block)) {
-      return `<div class="math-block">${escapeHtml(block.slice(2, -2).trim())}</div>`;
+      return `<div class="math-block">\\[${escapeHtml(block.slice(2, -2).trim())}\\]</div>`;
     }
     const lines = block.split("\n");
     if (isMarkdownTable(lines)) return renderMarkdownTable(lines);
@@ -162,12 +174,13 @@ function setActiveNav(hash) {
 function route() {
   const hash = location.hash || "#/";
   setActiveNav(hash);
-  if (hash.startsWith("#/paper/")) return renderPaper(decodeURIComponent(hash.replace("#/paper/", "")));
-  if (hash === "#/dashboard") return renderDashboard();
-  if (hash === "#/study") return renderStudy();
-  if (hash === "#/classes") return renderClasses();
-  if (hash === "#/manage") return renderManage();
-  renderHome();
+  if (hash.startsWith("#/paper/")) renderPaper(decodeURIComponent(hash.replace("#/paper/", "")));
+  else if (hash === "#/dashboard") renderDashboard();
+  else if (hash === "#/study") renderStudy();
+  else if (hash === "#/classes") renderClasses();
+  else if (hash === "#/manage") renderManage();
+  else renderHome();
+  window.setTimeout(() => typesetMath(app), 0);
 }
 
 function paperStats(paper) {
@@ -530,6 +543,7 @@ function applyObjectiveResult(details) {
     if (explain) {
       explain.hidden = false;
       explain.innerHTML = `<div class="${detail.correct ? "status-ok" : "status-bad"}">${detail.correct ? "回答正确" : "回答错误"}</div><div class="rich-text">${renderMarkdown(detail.explanation || "")}</div>`;
+      typesetMath(explain);
     }
     document.querySelectorAll(`[data-option^="${detail.id}:"]`).forEach((option) => {
       const value = option.dataset.option.split(":")[1];
@@ -618,6 +632,7 @@ async function renderStudy() {
       </aside>
     </div>
   `;
+  typesetMath(app);
 }
 
 function renderWrongQuestion(item) {
@@ -765,6 +780,7 @@ async function renderManage() {
   document.querySelector("#importUsers")?.addEventListener("click", importUsersFromExcel);
   document.querySelector("#saveExamType")?.addEventListener("click", saveExamType);
   document.querySelectorAll("[data-delete-exam-type]").forEach((button) => button.addEventListener("click", () => deleteExamType(button.dataset.deleteExamType)));
+  typesetMath(app);
 }
 
 function manageTabButton(id, label, active) {
@@ -1001,12 +1017,44 @@ function insertMarkdownSnippet(button) {
   if (type === "code") {
     openCodeInsertDialog(textarea);
   } else if (type === "formula") {
-    insertAtCursor(textarea, "\n$$\na^2 + b^2 = c^2\n$$\n");
+    openFormulaInsertDialog(textarea);
   } else if (type === "image") {
     const url = window.prompt("请输入图片地址，例如 https://example.com/image.png");
     if (!url) return;
     insertAtCursor(textarea, `\n![图片说明](${url.trim()})\n`);
   }
+}
+
+function openFormulaInsertDialog(textarea) {
+  pendingMarkdownTextarea = textarea;
+  const selected = textarea.value.slice(textarea.selectionStart || 0, textarea.selectionEnd || 0);
+  formulaSnippetInput.value = selected.replace(/^\s*\${1,2}|\${1,2}\s*$/g, "") || "a^2 + b^2 = c^2";
+  formulaDisplayMode.checked = true;
+  updateFormulaSnippetPreview();
+  formulaInsertDialog.showModal();
+  formulaSnippetInput.focus();
+}
+
+function formulaMarkdown(formula, display) {
+  const value = String(formula || "").trim();
+  return display ? `\n$$\n${value}\n$$\n` : `$${value}$`;
+}
+
+function updateFormulaSnippetPreview() {
+  const formula = formulaSnippetInput.value.trim();
+  formulaSnippetPreview.innerHTML = formula
+    ? renderMarkdown(formulaMarkdown(formula, formulaDisplayMode.checked))
+    : `<div class="muted">公式预览会显示在这里。</div>`;
+  typesetMath(formulaSnippetPreview);
+}
+
+function confirmFormulaInsert() {
+  if (!pendingMarkdownTextarea) return;
+  const formula = formulaSnippetInput.value.trim();
+  if (!formula) return notify("请先输入公式。");
+  insertAtCursor(pendingMarkdownTextarea, formulaMarkdown(formula, formulaDisplayMode.checked));
+  formulaInsertDialog.close();
+  pendingMarkdownTextarea = null;
 }
 
 function openCodeInsertDialog(textarea) {
@@ -1465,6 +1513,11 @@ codeLanguageInput.addEventListener("input", updateCodeSnippetPreview);
 insertCodeSnippet.addEventListener("click", confirmCodeInsert);
 closeCodeInsert.addEventListener("click", () => codeInsertDialog.close());
 cancelCodeInsert.addEventListener("click", () => codeInsertDialog.close());
+formulaSnippetInput.addEventListener("input", updateFormulaSnippetPreview);
+formulaDisplayMode.addEventListener("change", updateFormulaSnippetPreview);
+insertFormulaSnippet.addEventListener("click", confirmFormulaInsert);
+closeFormulaInsert.addEventListener("click", () => formulaInsertDialog.close());
+cancelFormulaInsert.addEventListener("click", () => formulaInsertDialog.close());
 window.addEventListener("hashchange", route);
 
 init();

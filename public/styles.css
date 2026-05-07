@@ -958,8 +958,9 @@ button {
   border-radius: 4px;
   background: #f8fafc;
   color: #0f172a;
-  font-family: "Times New Roman", serif;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-x: auto;
+  vertical-align: middle;
 }
 
 .math-block {
@@ -970,10 +971,7 @@ button {
   border-radius: 6px;
   background: #f8fafc;
   color: #0f172a;
-  font-family: "Times New Roman", serif;
-  font-size: 18px;
   text-align: center;
-  white-space: pre;
 }
 
 .options {
@@ -1242,7 +1240,8 @@ button {
   background: rgba(15, 23, 42, 0.42);
 }
 
-.code-dialog {
+.code-dialog,
+.formula-dialog {
   width: min(980px, calc(100% - 28px));
   border: 0;
   border-radius: 8px;
@@ -1250,7 +1249,8 @@ button {
   box-shadow: var(--shadow);
 }
 
-.code-dialog::backdrop {
+.code-dialog::backdrop,
+.formula-dialog::backdrop {
   background: rgba(15, 23, 42, 0.42);
 }
 
@@ -1258,7 +1258,8 @@ button {
   padding: 18px;
 }
 
-.code-insert-box {
+.code-insert-box,
+.formula-insert-box {
   padding: 18px;
 }
 
@@ -1305,14 +1306,17 @@ button {
   padding: 0 10px;
 }
 
-.code-insert-grid {
+.code-insert-grid,
+.formula-insert-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
 }
 
 .code-insert-grid textarea,
-.code-preview {
+.code-preview,
+.formula-insert-grid textarea,
+.formula-preview {
   min-height: 420px;
   max-height: 62vh;
   overflow: auto;
@@ -1329,8 +1333,21 @@ button {
   white-space: pre;
 }
 
-.code-preview {
+.formula-insert-grid textarea {
+  resize: vertical;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.code-preview,
+.formula-preview {
   background: #f8fafc;
+}
+
+.formula-preview {
+  display: grid;
+  place-items: center;
 }
 
 .auth-actions {
@@ -1420,12 +1437,15 @@ button {
     justify-content: flex-start;
   }
 
-  .code-insert-grid {
+  .code-insert-grid,
+  .formula-insert-grid {
     grid-template-columns: 1fr;
   }
 
   .code-insert-grid textarea,
-  .code-preview {
+  .code-preview,
+  .formula-insert-grid textarea,
+  .formula-preview {
     min-height: 260px;
     max-height: 42vh;
   }

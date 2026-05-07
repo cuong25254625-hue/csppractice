@@ -625,7 +625,19 @@ button {
 
 .stem pre,
 .rich-text pre,
-.code-block,
+.code-block {
+  margin: 8px 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid #d8e2ee;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .sample pre,
 .result-output {
   margin: 8px 0;
@@ -685,7 +697,7 @@ button {
   position: absolute;
   top: 6px;
   right: 10px;
-  color: #9ca3af;
+  color: #64748b;
   font-size: 12px;
 }
 

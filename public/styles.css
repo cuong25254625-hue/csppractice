@@ -408,6 +408,90 @@ button {
   color: var(--muted);
 }
 
+.manage-shell {
+  display: grid;
+  gap: 18px;
+  padding: 22px 0;
+}
+
+.manage-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.manage-tabs button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.manage-tabs button.active,
+.manage-tabs button:hover {
+  background: #0f766e;
+  color: #fff;
+}
+
+.manage-class-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 18px;
+  align-items: start;
+}
+
+.manage-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.class-create-form {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto auto;
+  margin-bottom: 14px;
+}
+
+.class-card-list {
+  display: grid;
+  gap: 10px;
+}
+
+.class-manage-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfdff;
+}
+
+.class-manage-card.active {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px #ccfbf1;
+}
+
+.class-manage-card h3 {
+  margin: 0 0 6px;
+  font-size: 17px;
+}
+
+.class-card-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .compact-stats .stat-card {
   min-height: 64px;
   padding: 10px 12px;
@@ -456,6 +540,26 @@ button {
 
 .report-table .score-badge {
   min-width: 0;
+}
+
+.report-empty .panel-body {
+  display: grid;
+  gap: 8px;
+}
+
+.report-empty .panel-body p {
+  margin: 0;
+}
+
+.report-empty-icon {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--brand);
+  background: #ccfbf1;
+  font-weight: 700;
 }
 
 .progress-row {
@@ -613,6 +717,11 @@ button {
 
 .question {
   margin-bottom: 14px;
+}
+
+.question.focus-flash {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px #ccfbf1, var(--shadow);
 }
 
 .question-head {
@@ -1149,6 +1258,8 @@ button {
   .grid,
   .paper-layout,
   .program-grid,
+  .manage-class-layout,
+  .manage-settings-grid,
   .stat-grid {
     grid-template-columns: 1fr;
   }
@@ -1168,6 +1279,19 @@ button {
 
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .class-create-form {
+    grid-template-columns: 1fr;
+  }
+
+  .class-manage-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .class-card-actions {
+    justify-content: flex-start;
   }
 
   .code-insert-grid {

@@ -6,7 +6,7 @@ const state = {
   examTypes: [],
   authMode: "login",
   filters: { category: "all", level: "all", keyword: "" },
-  manage: { papers: [], overview: null, users: [], editPaper: null, classReport: null }
+  manage: { papers: [], overview: null, users: [], editPaper: null, classReport: null, tab: "papers" }
 };
 
 const app = document.querySelector("#app");
@@ -369,7 +369,7 @@ function renderPaper(paperId) {
         <div class="panel-head"><h2>答题卡</h2></div>
         <div class="panel-body">
           <div class="answer-grid">
-            ${paper.questions.map((question, index) => `<a href="#q-${question.id}" data-card="${question.id}">${index + 1}</a>`).join("")}
+            ${paper.questions.map((question, index) => `<a href="#q-${question.id}" data-card="${question.id}" data-jump-question="${question.id}">${index + 1}</a>`).join("")}
           </div>
           <div class="submit-row">
             <button class="primary-btn" type="button" id="submitObjective" ${objectiveQuestions.length ? "" : "disabled"}>提交</button>
@@ -388,7 +388,17 @@ function renderPaper(paperId) {
   });
   document.querySelector("#submitObjective")?.addEventListener("click", () => submitObjective(paper.id));
   document.querySelectorAll("[data-run-code]").forEach((button) => button.addEventListener("click", () => submitCode(paper.id, button.dataset.runCode)));
+  document.querySelectorAll("[data-jump-question]").forEach((link) => link.addEventListener("click", jumpToQuestion));
   updateAnswerCard();
+}
+
+function jumpToQuestion(event) {
+  event.preventDefault();
+  const target = document.querySelector(`#q-${CSS.escape(event.currentTarget.dataset.jumpQuestion)}`);
+  if (!target) return;
+  target.scrollIntoView({ behavior: "smooth", block: "start" });
+  target.classList.add("focus-flash");
+  window.setTimeout(() => target.classList.remove("focus-flash"), 900);
 }
 
 function renderQuestionGroup(title, questions) {
@@ -703,50 +713,112 @@ async function renderManage() {
 
   const overview = state.manage.overview || { totals: {}, classes: [], assignments: [], recentAttempts: [] };
   state.manage.editPaper ||= samplePaper();
+  const tab = state.manage.tab || "papers";
   app.innerHTML = `
-    <div class="grid">
-      <section>
-        <div class="panel"><div class="panel-head"><h1>教学管理台</h1><span class="muted">${roleName(state.user.role)}</span></div><div class="panel-body stat-grid">${statCard("试卷", overview.totals.papers || 0)}${statCard("班级", overview.totals.classes || 0)}${statCard("学生", overview.totals.students || 0)}${statCard("提交", overview.totals.attempts || 0)}</div></div>
-        <div class="panel" style="margin-top: 18px;">
-          <div class="panel-head"><h2>可视化建卷</h2></div>
-          <div class="panel-body">
-            <div class="form-grid"><select id="paperSelect"><option value="">新建试卷</option>${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}</select><button class="secondary-btn" type="button" id="loadPaper">载入</button><button class="danger-btn" type="button" id="deletePaper">删除</button></div>
-            ${renderPaperBuilder(state.manage.editPaper || samplePaper())}
-            <details class="advanced-json"><summary>高级 JSON 导入/导出</summary><textarea class="json-editor compact" id="paperJson" spellcheck="false">${escapeHtml(JSON.stringify(state.manage.editPaper || samplePaper(), null, 2))}</textarea></details>
-            <div class="submit-row"><button class="primary-btn" type="button" id="savePaper">保存试卷</button><button class="secondary-btn" type="button" id="syncJson">同步到 JSON</button><span class="muted">日常用表单建卷；复杂导入可展开 JSON。</span></div>
-          </div>
-        </div>
-      </section>
-      <aside class="side-stack">
-        <div class="panel"><div class="panel-head"><h2>班级管理</h2></div><div class="panel-body"><div class="stack-form"><input id="className" placeholder="班级名称，如 周六一级班"><select id="classCategory">${state.examTypes.map((type) => `<option value="${type.id}">${escapeHtml(type.name)}</option>`).join("")}</select><select id="classLevel">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}">${index + 1} 级</option>`).join("")}</select><button class="primary-btn" type="button" id="createClass">创建班级</button></div><ul class="mini-list class-admin-list" style="margin-top: 12px;">${(overview.classes || []).map((klass) => `<li><span>${escapeHtml(klass.name)}<div class="muted">${escapeHtml(klass.categoryName || categoryName(klass.category))} · 邀请码 ${escapeHtml(klass.inviteCode)}</div></span><button class="secondary-btn" type="button" data-class-report="${klass.id}">${klass.studentCount} 人</button></li>`).join("") || `<li class="muted">暂无班级</li>`}</ul></div></div>
-        ${renderClassReport()}
-        ${isAdmin() ? renderExamTypeAdmin() : ""}
-        <div class="panel"><div class="panel-head"><h2>发布作业</h2></div><div class="panel-body"><div class="stack-form"><select id="assignmentClass">${(overview.classes || []).map((klass) => `<option value="${klass.id}">${escapeHtml(klass.name)}</option>`).join("")}</select><select id="assignmentPaper">${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}</select><input id="assignmentDue" type="date"><button class="primary-btn" type="button" id="createAssignment">发布作业</button></div></div></div>
-        ${isAdmin() ? renderUserAdmin() : ""}
-      </aside>
-    </div>
+    <section class="manage-shell">
+      <div class="panel">
+        <div class="panel-head"><h1>教学管理台</h1><span class="muted">${roleName(state.user.role)}</span></div>
+        <div class="panel-body stat-grid">${statCard("试卷", overview.totals.papers || 0)}${statCard("班级", overview.totals.classes || 0)}${statCard("学生", overview.totals.students || 0)}${statCard("提交", overview.totals.attempts || 0)}</div>
+      </div>
+      <div class="manage-tabs" role="tablist">
+        ${manageTabButton("papers", "试卷题库", tab)}
+        ${manageTabButton("classes", "班级学情", tab)}
+        ${manageTabButton("settings", "系统设置", tab)}
+      </div>
+      <div class="manage-section" ${tab === "papers" ? "" : "hidden"}>${renderManagePapersSection()}</div>
+      <div class="manage-section" ${tab === "classes" ? "" : "hidden"}>${renderManageClassesSection(overview)}</div>
+      <div class="manage-section" ${tab === "settings" ? "" : "hidden"}>${renderManageSettingsSection()}</div>
+    </section>
   `;
-  document.querySelector("#loadPaper").addEventListener("click", loadPaperIntoEditor);
-  document.querySelector("#savePaper").addEventListener("click", savePaperFromEditor);
-  document.querySelector("#syncJson").addEventListener("click", syncBuilderToJson);
-  document.querySelector("#paperCategoryInput").addEventListener("change", () => {
+  document.querySelectorAll("[data-manage-tab]").forEach((button) => button.addEventListener("click", () => {
+    state.manage.tab = button.dataset.manageTab;
+    renderManage();
+  }));
+  document.querySelector("#loadPaper")?.addEventListener("click", loadPaperIntoEditor);
+  document.querySelector("#savePaper")?.addEventListener("click", savePaperFromEditor);
+  document.querySelector("#syncJson")?.addEventListener("click", syncBuilderToJson);
+  document.querySelector("#paperCategoryInput")?.addEventListener("change", () => {
     const examType = examTypeById(document.querySelector("#paperCategoryInput").value);
     document.querySelector("#paperLevelField").hidden = !examType.levelEnabled;
   });
-  document.querySelector("#addSingle").addEventListener("click", () => addBuilderQuestion("single"));
-  document.querySelector("#addJudge").addEventListener("click", () => addBuilderQuestion("judge"));
-  document.querySelector("#addProgram").addEventListener("click", () => addBuilderQuestion("program"));
+  document.querySelector("#addSingle")?.addEventListener("click", () => addBuilderQuestion("single"));
+  document.querySelector("#addJudge")?.addEventListener("click", () => addBuilderQuestion("judge"));
+  document.querySelector("#addProgram")?.addEventListener("click", () => addBuilderQuestion("program"));
   document.querySelectorAll("[data-remove-question]").forEach((button) => button.addEventListener("click", () => removeBuilderQuestion(Number(button.dataset.removeQuestion))));
   document.querySelectorAll("[data-insert-markdown]").forEach((button) => button.addEventListener("click", () => insertMarkdownSnippet(button)));
-  document.querySelector("#deletePaper").addEventListener("click", deleteSelectedPaper);
-  document.querySelector("#createClass").addEventListener("click", createClass);
-  document.querySelector("#classCategory").addEventListener("change", updateClassLevelVisibility);
+  document.querySelector("#deletePaper")?.addEventListener("click", deleteSelectedPaper);
+  document.querySelector("#createClass")?.addEventListener("click", createClass);
+  document.querySelector("#classCategory")?.addEventListener("change", updateClassLevelVisibility);
   updateClassLevelVisibility();
   document.querySelectorAll("[data-class-report]").forEach((button) => button.addEventListener("click", () => loadClassReport(button.dataset.classReport)));
-  document.querySelector("#createAssignment").addEventListener("click", createAssignment);
+  document.querySelector("#createAssignment")?.addEventListener("click", createAssignment);
   document.querySelector("#createUser")?.addEventListener("click", createUser);
   document.querySelector("#saveExamType")?.addEventListener("click", saveExamType);
   document.querySelectorAll("[data-delete-exam-type]").forEach((button) => button.addEventListener("click", () => deleteExamType(button.dataset.deleteExamType)));
+}
+
+function manageTabButton(id, label, active) {
+  return `<button class="${active === id ? "active" : ""}" type="button" role="tab" aria-selected="${active === id}" data-manage-tab="${id}">${label}</button>`;
+}
+
+function renderManagePapersSection() {
+  return `
+    <div class="panel">
+      <div class="panel-head"><h2>可视化建卷</h2><span class="muted">编辑试卷、题目和 Markdown 内容</span></div>
+      <div class="panel-body">
+        <div class="form-grid"><select id="paperSelect"><option value="">新建试卷</option>${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}</select><button class="secondary-btn" type="button" id="loadPaper">载入</button><button class="danger-btn" type="button" id="deletePaper">删除</button></div>
+        ${renderPaperBuilder(state.manage.editPaper || samplePaper())}
+        <details class="advanced-json"><summary>高级 JSON 导入/导出</summary><textarea class="json-editor compact" id="paperJson" spellcheck="false">${escapeHtml(JSON.stringify(state.manage.editPaper || samplePaper(), null, 2))}</textarea></details>
+        <div class="submit-row"><button class="primary-btn" type="button" id="savePaper">保存试卷</button><button class="secondary-btn" type="button" id="syncJson">同步到 JSON</button><span class="muted">日常用表单建卷；复杂导入可展开 JSON。</span></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderManageClassesSection(overview) {
+  const classes = overview.classes || [];
+  return `
+    <div class="manage-class-layout">
+      <div class="panel">
+        <div class="panel-head"><h2>班级列表</h2><span class="muted">点击“查看学情”进入班级报告</span></div>
+        <div class="panel-body">
+          <div class="stack-form class-create-form"><input id="className" placeholder="班级名称，如 周六一级班"><select id="classCategory">${state.examTypes.map((type) => `<option value="${type.id}">${escapeHtml(type.name)}</option>`).join("")}</select><select id="classLevel">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}">${index + 1} 级</option>`).join("")}</select><button class="primary-btn" type="button" id="createClass">创建班级</button></div>
+          <div class="class-card-list">
+            ${classes.map(renderClassManageCard).join("") || `<div class="empty">暂无班级，先创建一个班级。</div>`}
+          </div>
+        </div>
+      </div>
+      <div class="side-stack">
+        ${renderClassReport()}
+        <div class="panel"><div class="panel-head"><h2>发布作业</h2></div><div class="panel-body"><div class="stack-form"><select id="assignmentClass">${classes.map((klass) => `<option value="${klass.id}">${escapeHtml(klass.name)}</option>`).join("")}</select><select id="assignmentPaper">${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}</select><input id="assignmentDue" type="date"><button class="primary-btn" type="button" id="createAssignment">发布作业</button></div></div></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderClassManageCard(klass) {
+  const active = state.manage.classReport?.class?.id === klass.id;
+  return `
+    <article class="class-manage-card ${active ? "active" : ""}">
+      <div>
+        <h3>${escapeHtml(klass.name)}</h3>
+        <div class="meta"><span>${escapeHtml(klass.categoryName || categoryName(klass.category))}</span>${klass.level ? `<span>${klass.level} 级</span>` : ""}<span>邀请码 ${escapeHtml(klass.inviteCode)}</span></div>
+      </div>
+      <div class="class-card-actions">
+        <span class="muted">${klass.studentCount} 名学生 · ${klass.assignmentCount} 个作业</span>
+        <button class="primary-btn" type="button" data-class-report="${klass.id}">查看学情</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderManageSettingsSection() {
+  return `
+    <div class="manage-settings-grid">
+      ${isAdmin() ? renderExamTypeAdmin() : `<div class="panel"><div class="panel-head"><h2>考试类型</h2></div><div class="panel-body"><p class="muted">考试类型由管理员维护。</p></div></div>`}
+      ${isAdmin() ? renderUserAdmin() : ""}
+    </div>
+  `;
 }
 
 function statCard(label, value) {
@@ -995,7 +1067,7 @@ function updateClassLevelVisibility() {
 function renderClassReport() {
   const report = state.manage.classReport;
   if (!report) {
-    return `<div class="panel"><div class="panel-head"><h2>班级学情</h2></div><div class="panel-body"><p class="muted">点击班级人数，可以查看学生练习次数、客观题最高分和编程题通过情况。</p></div></div>`;
+    return `<div class="panel class-report-card report-empty"><div class="panel-head"><h2>班级学情</h2></div><div class="panel-body"><div class="report-empty-icon">学情</div><p>选择左侧班级，点击 <strong>查看学情</strong>。</p><p class="muted">这里会显示学生练习次数、客观题最好成绩、编程题通过数、作业和最近答题记录。</p></div></div>`;
   }
   const klass = report.class;
   const assignments = report.assignments || [];
@@ -1051,7 +1123,9 @@ function renderExamTypeAdmin() {
 
 async function loadClassReport(classId) {
   try {
+    state.manage.tab = "classes";
     state.manage.classReport = await api(`/api/classes/${encodeURIComponent(classId)}/report`);
+    notify("班级学情已加载。");
     renderManage();
   } catch (error) {
     notify(error.message);

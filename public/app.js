@@ -156,8 +156,9 @@ function paperStats(paper) {
 
 function filteredPapers() {
   return state.papers.filter((paper) => {
-    const byCategory = state.filters.category === "all" || (paper.category || "gesp") === state.filters.category;
-    const byLevel = state.filters.level === "all" || String(paper.level) === state.filters.level;
+    const category = paper.category || "gesp";
+    const byCategory = state.filters.category === "all" || category === state.filters.category;
+    const byLevel = category !== "gesp" || state.filters.category !== "gesp" || state.filters.level === "all" || String(paper.level) === state.filters.level;
     const text = `${paper.title} ${paper.summary} ${paper.language} ${categoryName(paper.category)}`.toLowerCase();
     const byKeyword = !state.filters.keyword || text.includes(state.filters.keyword.toLowerCase());
     return byCategory && byLevel && byKeyword;
@@ -242,8 +243,10 @@ function renderHome() {
 
   document.querySelector("#categoryFilter").value = state.filters.category;
   document.querySelector("#levelFilter").value = state.filters.level;
+  document.querySelector("#levelFilter").hidden = state.filters.category !== "gesp";
   document.querySelector("#categoryFilter").addEventListener("change", (event) => {
     state.filters.category = event.target.value;
+    if (state.filters.category !== "gesp") state.filters.level = "all";
     renderHome();
   });
   document.querySelector("#levelFilter").addEventListener("change", (event) => {
@@ -267,6 +270,7 @@ function renderPaperItem(paper) {
         <h3><a href="#/paper/${paper.id}">${escapeHtml(paper.title)}</a></h3>
         <div class="meta">
           <span>${categoryName(category)}</span>
+          ${category === "gesp" ? `<span>${paper.level} 级</span>` : ""}
           <span>${escapeHtml(paper.language || "C++")}</span>
           <span>${paper.year || ""}-${paper.month || ""}</span>
           <span>客观题 ${stats.objective}</span>
@@ -314,6 +318,7 @@ function renderPaper(paperId) {
               <h1>${escapeHtml(paper.title)}</h1>
               <div class="meta" style="margin-top: 8px;">
                 <span>${categoryName(paper.category || "gesp")}</span>
+                ${(paper.category || "gesp") === "gesp" ? `<span>${paper.level} 级</span>` : ""}
                 <span>${escapeHtml(paper.language || "C++")}</span>
                 <span>满分 ${stats.fullScore}</span>
                 <span>客观题 ${stats.objective}</span>
@@ -668,6 +673,10 @@ async function renderManage() {
   document.querySelector("#loadPaper").addEventListener("click", loadPaperIntoEditor);
   document.querySelector("#savePaper").addEventListener("click", savePaperFromEditor);
   document.querySelector("#syncJson").addEventListener("click", syncBuilderToJson);
+  document.querySelector("#paperCategoryInput").addEventListener("change", () => {
+    const isGesp = document.querySelector("#paperCategoryInput").value === "gesp";
+    document.querySelector("#paperLevelField").hidden = !isGesp;
+  });
   document.querySelector("#addSingle").addEventListener("click", () => addBuilderQuestion("single"));
   document.querySelector("#addJudge").addEventListener("click", () => addBuilderQuestion("judge"));
   document.querySelector("#addProgram").addEventListener("click", () => addBuilderQuestion("program"));
@@ -684,13 +693,14 @@ function statCard(label, value) {
 
 function renderPaperBuilder(paper) {
   const questions = paper.questions || [];
+  const isGesp = (paper.category || "gesp") === "gesp";
   return `
     <div class="builder">
       <div class="builder-meta">
         <label><span>试卷 ID</span><input id="paperIdInput" value="${escapeHtml(paper.id)}"></label>
         <label><span>标题</span><input id="paperTitleInput" value="${escapeHtml(paper.title)}"></label>
         <label><span>考试类型</span><select id="paperCategoryInput">${["gesp", "cspj", "csps", "csp"].map((item) => `<option value="${item}" ${(paper.category || "gesp") === item ? "selected" : ""}>${categoryName(item)}</option>`).join("")}</select></label>
-        <label><span>等级</span><select id="paperLevelInput">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}" ${Number(paper.level) === index + 1 ? "selected" : ""}>${index + 1} 级</option>`).join("")}</select></label>
+        <label id="paperLevelField" ${isGesp ? "" : "hidden"}><span>等级</span><select id="paperLevelInput">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}" ${Number(paper.level || 1) === index + 1 ? "selected" : ""}>${index + 1} 级</option>`).join("")}</select></label>
         <label><span>月份</span><input id="paperMonthInput" value="${escapeHtml(paper.month || "06")}"></label>
         <label class="span-2"><span>说明</span><input id="paperSummaryInput" value="${escapeHtml(paper.summary || "")}"></label>
       </div>
@@ -727,7 +737,7 @@ function collectBuilderPaper() {
     id: document.querySelector("#paperIdInput").value.trim(),
     title: document.querySelector("#paperTitleInput").value.trim(),
     category: document.querySelector("#paperCategoryInput").value,
-    level: Number(document.querySelector("#paperLevelInput").value),
+    level: document.querySelector("#paperCategoryInput").value === "gesp" ? Number(document.querySelector("#paperLevelInput").value) : null,
     language: "C++",
     year: new Date().getFullYear(),
     month: document.querySelector("#paperMonthInput").value.trim() || "06",

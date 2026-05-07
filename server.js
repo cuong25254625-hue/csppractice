@@ -357,11 +357,12 @@ function audit(db, user, action, target) {
 }
 
 function validatePaper(input) {
+  const category = String(input.category || "gesp").trim();
   const paper = {
     id: String(input.id || "").trim() || slugify(input.title || "paper"),
     title: String(input.title || "").trim(),
-    category: String(input.category || "gesp").trim(),
-    level: Number(input.level || 1),
+    category,
+    level: category === "gesp" ? Number(input.level || 1) : null,
     language: String(input.language || "C++").trim(),
     year: Number(input.year || new Date().getFullYear()),
     month: String(input.month || "01").padStart(2, "0"),
@@ -371,7 +372,7 @@ function validatePaper(input) {
     questions: Array.isArray(input.questions) ? input.questions : []
   };
   if (!paper.title) throw new Error("试卷标题不能为空。");
-  if (paper.level < 1 || paper.level > 8) throw new Error("等级需在 1-8 之间。");
+  if (paper.category === "gesp" && (paper.level < 1 || paper.level > 8)) throw new Error("GESP 等级需在 1-8 之间。");
   paper.questions.forEach((question, index) => {
     question.id ||= `${paper.id}-q${index + 1}`;
     question.score = Number(question.score || 0);
@@ -454,7 +455,7 @@ function buildStudentSummary(user, db, papers) {
 
   const progress = Array.from({ length: 8 }, (_, index) => {
     const level = index + 1;
-    const levelPapers = papers.filter((paper) => Number(paper.level) === level);
+    const levelPapers = papers.filter((paper) => (paper.category || "gesp") === "gesp" && Number(paper.level) === level);
     const practiced = new Set(attempts.map((attempt) => attempt.paperId));
     return {
       level,

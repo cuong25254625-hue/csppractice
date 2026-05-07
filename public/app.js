@@ -446,7 +446,7 @@ function renderObjectiveQuestion(question) {
   return `
     <div class="stem rich-text">${renderMarkdown(question.stem)}</div>
     <div class="options">
-      ${options.map((option) => `<label class="option" data-option="${question.id}:${option.value}"><input type="radio" name="${question.id}" value="${option.value}"><span>${option.prefix ? `${option.prefix}. ${renderInlineMarkdown(option.label)}` : escapeHtml(option.label)}</span></label>`).join("")}
+      ${options.map((option) => `<label class="option" data-option="${question.id}:${option.value}"><input type="radio" name="${question.id}" value="${option.value}"><span class="option-content">${option.prefix ? `<span class="option-prefix">${option.prefix}.</span><span class="rich-text">${renderMarkdown(option.label)}</span>` : `<span>${escapeHtml(option.label)}</span>`}</span></label>`).join("")}
     </div>
     <div class="score-box" hidden data-explain="${question.id}"></div>
   `;
@@ -636,7 +636,7 @@ async function renderStudy() {
 }
 
 function renderWrongQuestion(item) {
-  return `<article class="wrong-item"><div class="question-head"><span>${escapeHtml(item.paperTitle)}</span><a class="secondary-btn" href="#/paper/${item.paperId}">重练</a></div><div class="rich-text">${renderMarkdown(item.stem)}</div>${item.choices?.length ? `<ol class="choice-list">${item.choices.map((choice, index) => `<li>${String.fromCharCode(65 + index)}. ${renderInlineMarkdown(choice)}</li>`).join("")}</ol>` : ""}<div class="meta"><span>你的答案：${escapeHtml(formatAnswer(item, item.userAnswer))}</span><span>正确答案：${escapeHtml(formatAnswer(item, item.answer))}</span></div><div class="score-box rich-text">${renderMarkdown(item.explanation || "暂无解析")}</div></article>`;
+  return `<article class="wrong-item"><div class="question-head"><span>${escapeHtml(item.paperTitle)}</span><a class="secondary-btn" href="#/paper/${item.paperId}">重练</a></div><div class="rich-text">${renderMarkdown(item.stem)}</div>${item.choices?.length ? `<ol class="choice-list">${item.choices.map((choice, index) => `<li><span class="option-prefix">${String.fromCharCode(65 + index)}.</span><span class="rich-text">${renderMarkdown(choice)}</span></li>`).join("")}</ol>` : ""}<div class="meta"><span>你的答案：${escapeHtml(formatAnswer(item, item.userAnswer))}</span><span>正确答案：${escapeHtml(formatAnswer(item, item.answer))}</span></div><div class="score-box rich-text">${renderMarkdown(item.explanation || "暂无解析")}</div></article>`;
 }
 
 function formatAnswer(item, value) {
@@ -921,13 +921,14 @@ function renderBuilderQuestion(question, index) {
   return `<article class="builder-question" data-builder-question="${index}"><div class="question-head"><span>第 ${index + 1} 题 · ${typeName}</span><button class="danger-btn" type="button" data-remove-question="${index}">删除</button></div><input data-field="id" value="${escapeHtml(question.id || `q${index + 1}`)}" placeholder="题目 ID"><input data-field="score" type="number" value="${Number(question.score || 2)}" placeholder="分值">${question.type === "program" ? renderProgramBuilder(question) : renderObjectiveBuilder(question)}</article>`;
 }
 
-function markdownInsertTools(field) {
-  return `<div class="markdown-tools"><button class="secondary-btn" type="button" data-insert-markdown="code" data-target-field="${field}">插入代码</button><button class="secondary-btn" type="button" data-insert-markdown="formula" data-target-field="${field}">插入公式</button><button class="secondary-btn" type="button" data-insert-markdown="image" data-target-field="${field}">插入图片</button></div>`;
+function markdownInsertTools(field, choiceIndex = null) {
+  const choiceAttr = choiceIndex === null ? "" : ` data-target-choice="${choiceIndex}"`;
+  return `<div class="markdown-tools"><button class="secondary-btn" type="button" data-insert-markdown="code" data-target-field="${field}"${choiceAttr}>插入代码</button><button class="secondary-btn" type="button" data-insert-markdown="formula" data-target-field="${field}"${choiceAttr}>插入公式</button><button class="secondary-btn" type="button" data-insert-markdown="image" data-target-field="${field}"${choiceAttr}>插入图片</button></div>`;
 }
 
 function renderObjectiveBuilder(question) {
   const choices = question.type === "single" ? [...(question.choices || []), "", "", "", ""].slice(0, 4) : [];
-  return `${markdownInsertTools("stem")}<textarea data-field="stem" placeholder="题干，支持 Markdown 代码块">${escapeHtml(question.stem || "")}</textarea>${question.type === "single" ? `<div class="choice-editor">${choices.map((choice, index) => `<label><span>${String.fromCharCode(65 + index)}</span><input data-choice="${index}" value="${escapeHtml(choice)}"></label>`).join("")}</div><label><span>正确选项</span><select data-field="answer">${choices.map((_, index) => `<option value="${index}" ${Number(question.answer || 0) === index ? "selected" : ""}>${String.fromCharCode(65 + index)}</option>`).join("")}</select></label>` : `<label><span>正确答案</span><select data-field="answer"><option value="true" ${question.answer !== false ? "selected" : ""}>正确</option><option value="false" ${question.answer === false ? "selected" : ""}>错误</option></select></label>`}${markdownInsertTools("explanation")}<textarea data-field="explanation" placeholder="解析，支持 Markdown">${escapeHtml(question.explanation || "")}</textarea>`;
+  return `${markdownInsertTools("stem")}<textarea data-field="stem" placeholder="题干，支持 Markdown 代码块">${escapeHtml(question.stem || "")}</textarea>${question.type === "single" ? `<div class="choice-editor">${choices.map((choice, index) => `<label class="choice-edit-item"><span>${String.fromCharCode(65 + index)}</span><div>${markdownInsertTools("choice", index)}<textarea data-choice="${index}" placeholder="选项内容，支持代码、图片和公式">${escapeHtml(choice)}</textarea></div></label>`).join("")}</div><label><span>正确选项</span><select data-field="answer">${choices.map((_, index) => `<option value="${index}" ${Number(question.answer || 0) === index ? "selected" : ""}>${String.fromCharCode(65 + index)}</option>`).join("")}</select></label>` : `<label><span>正确答案</span><select data-field="answer"><option value="true" ${question.answer !== false ? "selected" : ""}>正确</option><option value="false" ${question.answer === false ? "selected" : ""}>错误</option></select></label>`}${markdownInsertTools("explanation")}<textarea data-field="explanation" placeholder="解析，支持 Markdown">${escapeHtml(question.explanation || "")}</textarea>`;
 }
 
 function renderProgramBuilder(question) {
@@ -1011,7 +1012,9 @@ function insertAtCursor(textarea, text) {
 
 function insertMarkdownSnippet(button) {
   const question = button.closest("[data-builder-question]");
-  const textarea = question?.querySelector(`textarea[data-field="${button.dataset.targetField}"]`);
+  const textarea = button.dataset.targetChoice !== undefined
+    ? question?.querySelector(`textarea[data-choice="${button.dataset.targetChoice}"]`)
+    : question?.querySelector(`textarea[data-field="${button.dataset.targetField}"]`);
   if (!textarea) return;
   const type = button.dataset.insertMarkdown;
   if (type === "code") {

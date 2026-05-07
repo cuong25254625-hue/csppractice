@@ -11,6 +11,16 @@
           inlineMath: [["$", "$"], ["\\(", "\\)"]],
           displayMath: [["$$", "$$"], ["\\[", "\\]"]]
         },
+        options: {
+          enableMenu: false,
+          menuOptions: { settings: { assistiveMml: false, explorer: false } },
+          renderActions: { assistiveMml: [] }
+        },
+        a11y: {
+          speech: false,
+          braille: false,
+          explorer: false
+        },
         startup: { typeset: false }
       };
     </script>

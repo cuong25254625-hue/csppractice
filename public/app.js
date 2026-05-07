@@ -3,9 +3,10 @@ const state = {
   user: null,
   attempts: [],
   classes: [],
+  examTypes: [],
   authMode: "login",
   filters: { category: "all", level: "all", keyword: "" },
-  manage: { papers: [], overview: null, users: [], editPaper: null }
+  manage: { papers: [], overview: null, users: [], editPaper: null, classReport: null }
 };
 
 const app = document.querySelector("#app");
@@ -125,7 +126,11 @@ function roleName(role) {
 }
 
 function categoryName(category) {
-  return { gesp: "GESP", cspj: "CSP-J 初赛", csps: "CSP-S 初赛", csp: "CSP-J/S 初赛" }[category] || "综合";
+  return state.examTypes.find((item) => item.id === category)?.name || { gesp: "GESP", cspj: "CSP-J 初赛", csps: "CSP-S 初赛", csp: "CSP-J/S 初赛" }[category] || category || "综合";
+}
+
+function examTypeById(id) {
+  return state.examTypes.find((item) => item.id === id) || { id, name: categoryName(id), levelEnabled: id === "gesp" };
 }
 
 function setActiveNav(hash) {
@@ -174,7 +179,7 @@ function filteredPapers() {
   return state.papers.filter((paper) => {
     const category = paper.category || "gesp";
     const byCategory = state.filters.category === "all" || category === state.filters.category;
-    const byLevel = category !== "gesp" || state.filters.category !== "gesp" || state.filters.level === "all" || String(paper.level) === state.filters.level;
+    const byLevel = !examTypeById(category).levelEnabled || state.filters.category !== category || state.filters.level === "all" || String(paper.level) === state.filters.level;
     const text = `${paper.title} ${paper.summary} ${paper.language} ${categoryName(paper.category)}`.toLowerCase();
     const byKeyword = !state.filters.keyword || text.includes(state.filters.keyword.toLowerCase());
     return byCategory && byLevel && byKeyword;
@@ -195,10 +200,7 @@ function renderHome() {
             <div class="filters">
               <select id="categoryFilter" aria-label="考试类型筛选">
                 <option value="all">全部类型</option>
-                <option value="gesp">GESP</option>
-                <option value="cspj">CSP-J 初赛</option>
-                <option value="csps">CSP-S 初赛</option>
-                <option value="csp">CSP-J/S 初赛</option>
+                ${state.examTypes.map((type) => `<option value="${type.id}">${escapeHtml(type.name)}</option>`).join("")}
               </select>
               <select id="levelFilter" aria-label="等级筛选">
                 <option value="all">全部等级</option>
@@ -259,10 +261,10 @@ function renderHome() {
 
   document.querySelector("#categoryFilter").value = state.filters.category;
   document.querySelector("#levelFilter").value = state.filters.level;
-  document.querySelector("#levelFilter").hidden = state.filters.category !== "gesp";
+  document.querySelector("#levelFilter").hidden = !examTypeById(state.filters.category).levelEnabled;
   document.querySelector("#categoryFilter").addEventListener("change", (event) => {
     state.filters.category = event.target.value;
-    if (state.filters.category !== "gesp") state.filters.level = "all";
+    if (!examTypeById(state.filters.category).levelEnabled) state.filters.level = "all";
     renderHome();
   });
   document.querySelector("#levelFilter").addEventListener("change", (event) => {
@@ -281,12 +283,12 @@ function renderPaperItem(paper) {
   const category = paper.category || "gesp";
   return `
     <li class="paper-item">
-      <span class="paper-icon">${category === "gesp" ? `${paper.level}级` : "初赛"}</span>
+      <span class="paper-icon">${examTypeById(category).levelEnabled ? `${paper.level}级` : "初赛"}</span>
       <div>
         <h3><a href="#/paper/${paper.id}">${escapeHtml(paper.title)}</a></h3>
         <div class="meta">
           <span>${categoryName(category)}</span>
-          ${category === "gesp" ? `<span>${paper.level} 级</span>` : ""}
+          ${examTypeById(category).levelEnabled ? `<span>${paper.level} 级</span>` : ""}
           <span>${escapeHtml(paper.language || "C++")}</span>
           <span>${paper.year || ""}-${paper.month || ""}</span>
           <span>客观题 ${stats.objective}</span>
@@ -334,7 +336,7 @@ function renderPaper(paperId) {
               <h1>${escapeHtml(paper.title)}</h1>
               <div class="meta" style="margin-top: 8px;">
                 <span>${categoryName(paper.category || "gesp")}</span>
-                ${(paper.category || "gesp") === "gesp" ? `<span>${paper.level} 级</span>` : ""}
+                ${examTypeById(paper.category || "gesp").levelEnabled ? `<span>${paper.level} 级</span>` : ""}
                 <span>${escapeHtml(paper.language || "C++")}</span>
                 <span>满分 ${stats.fullScore}</span>
                 <span>客观题 ${stats.objective}</span>
@@ -646,7 +648,7 @@ async function renderClasses() {
         <div class="panel-head"><h1>我的班级</h1><span class="muted">${state.classes.length} 个班级</span></div>
         <div class="panel-body">
           <div class="form-grid"><input id="joinCode" placeholder="输入教师给的邀请码"><button class="primary-btn" type="button" id="joinClass">加入班级</button></div>
-          <ul class="paper-list" style="margin-top: 14px;">${state.classes.map((klass) => `<li class="paper-item"><span class="paper-icon">${klass.level}级</span><div><h3>${escapeHtml(klass.name)}</h3><div class="meta"><span>教师 ${escapeHtml(klass.teacherName)}</span><span>学生 ${klass.studentCount}</span><span>作业 ${klass.assignmentCount}</span><span>邀请码 ${escapeHtml(klass.inviteCode)}</span></div></div></li>`).join("") || `<li class="empty">还没有加入班级</li>`}</ul>
+          <ul class="paper-list" style="margin-top: 14px;">${state.classes.map((klass) => `<li class="paper-item"><span class="paper-icon">${examTypeById(klass.category).levelEnabled ? `${klass.level}级` : "初赛"}</span><div><h3>${escapeHtml(klass.name)}</h3><div class="meta"><span>${escapeHtml(klass.categoryName || categoryName(klass.category))}</span><span>教师 ${escapeHtml(klass.teacherName)}</span><span>学生 ${klass.studentCount}</span><span>作业 ${klass.assignmentCount}</span><span>邀请码 ${escapeHtml(klass.inviteCode)}</span></div></div></li>`).join("") || `<li class="empty">还没有加入班级</li>`}</ul>
         </div>
       </section>
       <aside class="side-stack"><div class="panel"><div class="panel-head"><h2>班级作业</h2></div><div class="panel-body"><ul class="mini-list">${(data.assignments || []).map((item) => `<li><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a><span class="muted">${escapeHtml(item.dueAt || "长期")}</span></li>`).join("") || `<li class="muted">暂无作业</li>`}</ul></div></div></aside>
@@ -701,7 +703,9 @@ async function renderManage() {
         </div>
       </section>
       <aside class="side-stack">
-        <div class="panel"><div class="panel-head"><h2>班级管理</h2></div><div class="panel-body"><div class="stack-form"><input id="className" placeholder="班级名称，如 周六一级班"><select id="classLevel">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}">${index + 1} 级</option>`).join("")}</select><button class="primary-btn" type="button" id="createClass">创建班级</button></div><ul class="mini-list" style="margin-top: 12px;">${(overview.classes || []).map((klass) => `<li><span>${escapeHtml(klass.name)}<div class="muted">邀请码 ${escapeHtml(klass.inviteCode)}</div></span><span class="muted">${klass.studentCount} 人</span></li>`).join("") || `<li class="muted">暂无班级</li>`}</ul></div></div>
+        <div class="panel"><div class="panel-head"><h2>班级管理</h2></div><div class="panel-body"><div class="stack-form"><input id="className" placeholder="班级名称，如 周六一级班"><select id="classCategory">${state.examTypes.map((type) => `<option value="${type.id}">${escapeHtml(type.name)}</option>`).join("")}</select><select id="classLevel">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}">${index + 1} 级</option>`).join("")}</select><button class="primary-btn" type="button" id="createClass">创建班级</button></div><ul class="mini-list class-admin-list" style="margin-top: 12px;">${(overview.classes || []).map((klass) => `<li><span>${escapeHtml(klass.name)}<div class="muted">${escapeHtml(klass.categoryName || categoryName(klass.category))} · 邀请码 ${escapeHtml(klass.inviteCode)}</div></span><button class="secondary-btn" type="button" data-class-report="${klass.id}">${klass.studentCount} 人</button></li>`).join("") || `<li class="muted">暂无班级</li>`}</ul></div></div>
+        ${renderClassReport()}
+        ${isAdmin() ? renderExamTypeAdmin() : ""}
         <div class="panel"><div class="panel-head"><h2>发布作业</h2></div><div class="panel-body"><div class="stack-form"><select id="assignmentClass">${(overview.classes || []).map((klass) => `<option value="${klass.id}">${escapeHtml(klass.name)}</option>`).join("")}</select><select id="assignmentPaper">${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}</select><input id="assignmentDue" type="date"><button class="primary-btn" type="button" id="createAssignment">发布作业</button></div></div></div>
         ${isAdmin() ? renderUserAdmin() : ""}
       </aside>
@@ -711,8 +715,8 @@ async function renderManage() {
   document.querySelector("#savePaper").addEventListener("click", savePaperFromEditor);
   document.querySelector("#syncJson").addEventListener("click", syncBuilderToJson);
   document.querySelector("#paperCategoryInput").addEventListener("change", () => {
-    const isGesp = document.querySelector("#paperCategoryInput").value === "gesp";
-    document.querySelector("#paperLevelField").hidden = !isGesp;
+    const examType = examTypeById(document.querySelector("#paperCategoryInput").value);
+    document.querySelector("#paperLevelField").hidden = !examType.levelEnabled;
   });
   document.querySelector("#addSingle").addEventListener("click", () => addBuilderQuestion("single"));
   document.querySelector("#addJudge").addEventListener("click", () => addBuilderQuestion("judge"));
@@ -720,8 +724,13 @@ async function renderManage() {
   document.querySelectorAll("[data-remove-question]").forEach((button) => button.addEventListener("click", () => removeBuilderQuestion(Number(button.dataset.removeQuestion))));
   document.querySelector("#deletePaper").addEventListener("click", deleteSelectedPaper);
   document.querySelector("#createClass").addEventListener("click", createClass);
+  document.querySelector("#classCategory").addEventListener("change", updateClassLevelVisibility);
+  updateClassLevelVisibility();
+  document.querySelectorAll("[data-class-report]").forEach((button) => button.addEventListener("click", () => loadClassReport(button.dataset.classReport)));
   document.querySelector("#createAssignment").addEventListener("click", createAssignment);
   document.querySelector("#createUser")?.addEventListener("click", createUser);
+  document.querySelector("#saveExamType")?.addEventListener("click", saveExamType);
+  document.querySelectorAll("[data-delete-exam-type]").forEach((button) => button.addEventListener("click", () => deleteExamType(button.dataset.deleteExamType)));
 }
 
 function statCard(label, value) {
@@ -730,18 +739,20 @@ function statCard(label, value) {
 
 function renderPaperBuilder(paper) {
   const questions = paper.questions || [];
-  const isGesp = (paper.category || "gesp") === "gesp";
+  const category = paper.category || "gesp";
+  const isLevelEnabled = examTypeById(category).levelEnabled;
   return `
     <div class="builder">
       <div class="builder-meta">
         <label><span>试卷 ID</span><input id="paperIdInput" value="${escapeHtml(paper.id)}"></label>
         <label><span>标题</span><input id="paperTitleInput" value="${escapeHtml(paper.title)}"></label>
-        <label><span>考试类型</span><select id="paperCategoryInput">${["gesp", "cspj", "csps", "csp"].map((item) => `<option value="${item}" ${(paper.category || "gesp") === item ? "selected" : ""}>${categoryName(item)}</option>`).join("")}</select></label>
-        <label id="paperLevelField" ${isGesp ? "" : "hidden"}><span>等级</span><select id="paperLevelInput">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}" ${Number(paper.level || 1) === index + 1 ? "selected" : ""}>${index + 1} 级</option>`).join("")}</select></label>
+        <label><span>考试类型</span><select id="paperCategoryInput">${state.examTypes.map((type) => `<option value="${type.id}" ${category === type.id ? "selected" : ""}>${escapeHtml(type.name)}</option>`).join("")}</select></label>
+        <label id="paperLevelField" ${isLevelEnabled ? "" : "hidden"}><span>等级</span><select id="paperLevelInput">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}" ${Number(paper.level || 1) === index + 1 ? "selected" : ""}>${index + 1} 级</option>`).join("")}</select></label>
         <label><span>月份</span><input id="paperMonthInput" value="${escapeHtml(paper.month || "06")}"></label>
         <label class="span-2"><span>说明</span><input id="paperSummaryInput" value="${escapeHtml(paper.summary || "")}"></label>
       </div>
       <div class="builder-toolbar"><button class="secondary-btn" type="button" id="addSingle">添加单选题</button><button class="secondary-btn" type="button" id="addJudge">添加判断题</button><button class="secondary-btn" type="button" id="addProgram">添加编程题</button></div>
+      <p class="builder-hint">题干、解析和编程题题面支持 Markdown，可直接粘贴 &#96;&#96;&#96;cpp 代码块。</p>
       <div class="builder-list">${questions.map((question, index) => renderBuilderQuestion(question, index)).join("") || `<div class="empty">还没有题目，先添加一题。</div>`}</div>
     </div>
   `;
@@ -754,11 +765,11 @@ function renderBuilderQuestion(question, index) {
 
 function renderObjectiveBuilder(question) {
   const choices = question.type === "single" ? [...(question.choices || []), "", "", "", ""].slice(0, 4) : [];
-  return `<textarea data-field="stem" placeholder="题干">${escapeHtml(question.stem || "")}</textarea>${question.type === "single" ? `<div class="choice-editor">${choices.map((choice, index) => `<label><span>${String.fromCharCode(65 + index)}</span><input data-choice="${index}" value="${escapeHtml(choice)}"></label>`).join("")}</div><label><span>正确选项</span><select data-field="answer">${choices.map((_, index) => `<option value="${index}" ${Number(question.answer || 0) === index ? "selected" : ""}>${String.fromCharCode(65 + index)}</option>`).join("")}</select></label>` : `<label><span>正确答案</span><select data-field="answer"><option value="true" ${question.answer !== false ? "selected" : ""}>正确</option><option value="false" ${question.answer === false ? "selected" : ""}>错误</option></select></label>`}<textarea data-field="explanation" placeholder="解析">${escapeHtml(question.explanation || "")}</textarea>`;
+  return `<textarea data-field="stem" placeholder="题干，支持 Markdown 代码块">${escapeHtml(question.stem || "")}</textarea>${question.type === "single" ? `<div class="choice-editor">${choices.map((choice, index) => `<label><span>${String.fromCharCode(65 + index)}</span><input data-choice="${index}" value="${escapeHtml(choice)}"></label>`).join("")}</div><label><span>正确选项</span><select data-field="answer">${choices.map((_, index) => `<option value="${index}" ${Number(question.answer || 0) === index ? "selected" : ""}>${String.fromCharCode(65 + index)}</option>`).join("")}</select></label>` : `<label><span>正确答案</span><select data-field="answer"><option value="true" ${question.answer !== false ? "selected" : ""}>正确</option><option value="false" ${question.answer === false ? "selected" : ""}>错误</option></select></label>`}<textarea data-field="explanation" placeholder="解析，支持 Markdown">${escapeHtml(question.explanation || "")}</textarea>`;
 }
 
 function renderProgramBuilder(question) {
-  return `<input data-field="title" value="${escapeHtml(question.title || "")}" placeholder="编程题标题"><textarea data-field="statement" placeholder="题面描述">${escapeHtml(question.statement || "")}</textarea><textarea data-field="input" placeholder="输入格式">${escapeHtml(question.input || "")}</textarea><textarea data-field="output" placeholder="输出格式">${escapeHtml(question.output || "")}</textarea><textarea data-field="samplesText" placeholder="样例，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.samples || []))}</textarea><textarea data-field="testsText" placeholder="隐藏测试点，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.tests || []))}</textarea>`;
+  return `<input data-field="title" value="${escapeHtml(question.title || "")}" placeholder="编程题标题"><textarea data-field="statement" placeholder="题面描述，支持 Markdown 代码块">${escapeHtml(question.statement || "")}</textarea><textarea data-field="input" placeholder="输入格式，支持 Markdown">${escapeHtml(question.input || "")}</textarea><textarea data-field="output" placeholder="输出格式，支持 Markdown">${escapeHtml(question.output || "")}</textarea><textarea data-field="samplesText" placeholder="样例，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.samples || []))}</textarea><textarea data-field="testsText" placeholder="隐藏测试点，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.tests || []))}</textarea>`;
 }
 
 function formatCases(cases) {
@@ -770,11 +781,13 @@ function parseCases(text) {
 }
 
 function collectBuilderPaper() {
+  const category = document.querySelector("#paperCategoryInput").value;
+  const examType = examTypeById(category);
   const paper = {
     id: document.querySelector("#paperIdInput").value.trim(),
     title: document.querySelector("#paperTitleInput").value.trim(),
-    category: document.querySelector("#paperCategoryInput").value,
-    level: document.querySelector("#paperCategoryInput").value === "gesp" ? Number(document.querySelector("#paperLevelInput").value) : null,
+    category,
+    level: examType.levelEnabled ? Number(document.querySelector("#paperLevelInput").value) : null,
     language: "C++",
     year: new Date().getFullYear(),
     month: document.querySelector("#paperMonthInput").value.trim() || "06",
@@ -893,9 +906,116 @@ async function deleteSelectedPaper() {
   }
 }
 
+function updateClassLevelVisibility() {
+  const categoryInput = document.querySelector("#classCategory");
+  const levelInput = document.querySelector("#classLevel");
+  if (!categoryInput || !levelInput) return;
+  levelInput.hidden = !examTypeById(categoryInput.value).levelEnabled;
+}
+
+function renderClassReport() {
+  const report = state.manage.classReport;
+  if (!report) {
+    return `<div class="panel"><div class="panel-head"><h2>班级学情</h2></div><div class="panel-body"><p class="muted">点击班级人数，可以查看学生练习次数、客观题最高分和编程题通过情况。</p></div></div>`;
+  }
+  const klass = report.class;
+  const assignments = report.assignments || [];
+  const students = report.students || [];
+  const attempts = report.recentAttempts || [];
+  const totalAttempts = students.reduce((sum, student) => sum + Number(student.attemptCount || 0), 0);
+  return `
+    <div class="panel class-report-card">
+      <div class="panel-head">
+        <h2>${escapeHtml(klass.name)}</h2>
+        <span class="muted">${escapeHtml(klass.categoryName || categoryName(klass.category))}${klass.level ? ` · ${klass.level} 级` : ""}</span>
+      </div>
+      <div class="panel-body">
+        <div class="stat-grid compact-stats">
+          ${statCard("学生", students.length)}
+          ${statCard("作业", assignments.length)}
+          ${statCard("答题", totalAttempts)}
+        </div>
+        <h3 class="subhead">学生练习数据</h3>
+        <table class="report-table">
+          <thead><tr><th>学生</th><th>练习</th><th>客观题最好成绩</th><th>编程通过</th></tr></thead>
+          <tbody>
+            ${students.map((student) => `<tr><td>${escapeHtml(student.username)}</td><td>${student.attemptCount} 次</td><td>${student.bestObjective ? `${renderScoreBadge(student.bestObjective.score, student.bestObjective.fullScore, "最好")}<div class="muted">${escapeHtml(student.bestObjective.paperTitle || "")}</div>` : `<span class="muted">暂无</span>`}</td><td>${student.acceptedPrograms} 题</td></tr>`).join("") || `<tr><td colspan="4" class="muted">暂无学生</td></tr>`}
+          </tbody>
+        </table>
+        <h3 class="subhead">已发布作业</h3>
+        <ul class="mini-list">${assignments.map((item) => `<li><span>${escapeHtml(item.paperTitle || item.title)}<div class="muted">${item.dueAt ? `截止 ${escapeHtml(item.dueAt)}` : "未设置截止日期"}</div></span></li>`).join("") || `<li class="muted">暂无作业</li>`}</ul>
+        <h3 class="subhead">最近答题</h3>
+        <ul class="mini-list">${attempts.slice(0, 6).map((item) => `<li><span>${escapeHtml(item.username || "")}<div class="muted">${escapeHtml(item.paperTitle || item.questionTitle || "")}</div></span><span class="muted">${item.type === "objective" ? `${item.score}/${item.fullScore}` : `${item.passed || 0}/${item.total || 0}`}</span></li>`).join("") || `<li class="muted">暂无答题记录</li>`}</ul>
+      </div>
+    </div>
+  `;
+}
+
+function renderExamTypeAdmin() {
+  return `
+    <div class="panel">
+      <div class="panel-head"><h2>考试类型</h2></div>
+      <div class="panel-body">
+        <div class="stack-form">
+          <input id="newExamTypeId" placeholder="类型 ID，如 noip">
+          <input id="newExamTypeName" placeholder="显示名称，如 NOIP 初赛">
+          <label class="inline-check"><input id="newExamTypeLevelEnabled" type="checkbox">需要等级</label>
+          <button class="primary-btn" type="button" id="saveExamType">保存类型</button>
+        </div>
+        <ul class="mini-list exam-type-list" style="margin-top: 12px;">
+          ${state.examTypes.map((type) => `<li><span>${escapeHtml(type.name)}<div class="muted">${escapeHtml(type.id)} · ${type.levelEnabled ? "有等级" : "无等级"}${type.builtIn ? " · 内置" : ""}</div></span>${type.builtIn ? `<span class="muted">固定</span>` : `<button class="danger-btn" type="button" data-delete-exam-type="${type.id}">删除</button>`}</li>`).join("")}
+        </ul>
+      </div>
+    </div>
+  `;
+}
+
+async function loadClassReport(classId) {
+  try {
+    state.manage.classReport = await api(`/api/classes/${encodeURIComponent(classId)}/report`);
+    renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function saveExamType() {
+  try {
+    const id = document.querySelector("#newExamTypeId").value;
+    const name = document.querySelector("#newExamTypeName").value;
+    const levelEnabled = document.querySelector("#newExamTypeLevelEnabled").checked;
+    await api("/api/admin/exam-types", { method: "POST", body: { id, name, levelEnabled } });
+    await refreshExamTypes();
+    notify("考试类型已保存。");
+    renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function deleteExamType(id) {
+  try {
+    await api(`/api/admin/exam-types/${encodeURIComponent(id)}`, { method: "DELETE" });
+    await refreshExamTypes();
+    notify("考试类型已删除。");
+    renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
 async function createClass() {
   try {
-    await api("/api/classes", { method: "POST", body: { name: document.querySelector("#className").value, level: document.querySelector("#classLevel").value } });
+    const category = document.querySelector("#classCategory").value;
+    const examType = examTypeById(category);
+    await api("/api/classes", {
+      method: "POST",
+      body: {
+        name: document.querySelector("#className").value,
+        category,
+        level: examType.levelEnabled ? document.querySelector("#classLevel").value : null
+      }
+    });
     await refreshMe();
     notify("班级已创建。");
     renderManage();
@@ -991,9 +1111,14 @@ async function refreshPapers() {
   state.papers = papersData.papers || [];
 }
 
+async function refreshExamTypes() {
+  const data = await api("/api/exam-types");
+  state.examTypes = data.examTypes || [];
+}
+
 async function init() {
   try {
-    await Promise.all([refreshPapers(), refreshMe()]);
+    await Promise.all([refreshExamTypes(), refreshPapers(), refreshMe()]);
   } catch (error) {
     app.innerHTML = `<div class="panel empty">启动失败：${escapeHtml(error.message)}</div>`;
     return;

@@ -55,6 +55,7 @@ function normalizeDb(db) {
   db.enrollments ||= [];
   db.assignments ||= [];
   db.auditLogs ||= [];
+  db.examTypes ||= [];
 
   db.users.forEach((user) => {
     user.role ||= "student";
@@ -65,7 +66,32 @@ function normalizeDb(db) {
   seedUser(db, "admin", "admin123", "admin");
   seedUser(db, "teacher", "teacher123", "teacher");
   seedUser(db, "demo", "demo123", "student");
+  seedExamTypes(db);
+  db.classes.forEach((klass) => {
+    klass.category ||= "gesp";
+    const examType = db.examTypes.find((item) => item.id === klass.category);
+    if (!examType?.levelEnabled) klass.level = null;
+  });
   return db;
+}
+
+function seedExamTypes(db) {
+  const defaults = [
+    { id: "gesp", name: "GESP", levelEnabled: true, builtIn: true },
+    { id: "cspj", name: "CSP-J 初赛", levelEnabled: false, builtIn: true },
+    { id: "csps", name: "CSP-S 初赛", levelEnabled: false, builtIn: true },
+    { id: "csp", name: "CSP-J/S 初赛", levelEnabled: false, builtIn: true }
+  ];
+  defaults.forEach((item) => {
+    const existing = db.examTypes.find((type) => type.id === item.id);
+    if (existing) {
+      existing.name ||= item.name;
+      existing.levelEnabled = item.levelEnabled;
+      existing.builtIn = true;
+    } else {
+      db.examTypes.push(item);
+    }
+  });
 }
 
 function seedUser(db, username, password, role) {
@@ -129,6 +155,15 @@ function publicUser(user) {
     role: user.role,
     status: user.status,
     createdAt: user.createdAt
+  };
+}
+
+function publicExamType(type) {
+  return {
+    id: type.id,
+    name: type.name,
+    levelEnabled: Boolean(type.levelEnabled),
+    builtIn: Boolean(type.builtIn)
   };
 }
 
@@ -356,13 +391,15 @@ function audit(db, user, action, target) {
   db.auditLogs = db.auditLogs.slice(0, 500);
 }
 
-function validatePaper(input) {
+function validatePaper(input, db) {
   const category = String(input.category || "gesp").trim();
+  const examType = db.examTypes.find((item) => item.id === category);
+  if (!examType) throw new Error("考试类型不存在。");
   const paper = {
     id: String(input.id || "").trim() || slugify(input.title || "paper"),
     title: String(input.title || "").trim(),
     category,
-    level: category === "gesp" ? Number(input.level || 1) : null,
+    level: examType.levelEnabled ? Number(input.level || 1) : null,
     language: String(input.language || "C++").trim(),
     year: Number(input.year || new Date().getFullYear()),
     month: String(input.month || "01").padStart(2, "0"),
@@ -372,7 +409,7 @@ function validatePaper(input) {
     questions: Array.isArray(input.questions) ? input.questions : []
   };
   if (!paper.title) throw new Error("试卷标题不能为空。");
-  if (paper.category === "gesp" && (paper.level < 1 || paper.level > 8)) throw new Error("GESP 等级需在 1-8 之间。");
+  if (examType.levelEnabled && (paper.level < 1 || paper.level > 8)) throw new Error("等级需在 1-8 之间。");
   paper.questions.forEach((question, index) => {
     question.id ||= `${paper.id}-q${index + 1}`;
     question.score = Number(question.score || 0);
@@ -395,11 +432,53 @@ function classPayload(klass, db) {
   const teacher = db.users.find((user) => user.id === klass.teacherId);
   const studentCount = db.enrollments.filter((item) => item.classId === klass.id).length;
   const assignmentCount = db.assignments.filter((item) => item.classId === klass.id).length;
+  const examType = db.examTypes.find((item) => item.id === klass.category);
   return {
     ...klass,
+    categoryName: examType?.name || klass.category || "GESP",
     teacherName: teacher?.username || "unknown",
     studentCount,
     assignmentCount
+  };
+}
+
+function classReportPayload(klass, db, papers) {
+  const enrollments = db.enrollments.filter((item) => item.classId === klass.id);
+  const students = enrollments
+    .map((item) => db.users.find((user) => user.id === item.userId))
+    .filter(Boolean);
+  const assignments = db.assignments.filter((item) => item.classId === klass.id);
+  const assignmentPaperIds = new Set(assignments.map((item) => item.paperId));
+  const studentIds = new Set(students.map((item) => item.id));
+  const attempts = db.attempts
+    .filter((item) => studentIds.has(item.userId) && (assignmentPaperIds.size === 0 || assignmentPaperIds.has(item.paperId)))
+    .slice(0, 100);
+  const studentRows = students.map((student) => {
+    const studentAttempts = attempts.filter((item) => item.userId === student.id);
+    const bestObjective = studentAttempts
+      .filter((item) => item.type === "objective")
+      .sort((a, b) => ((b.score || 0) / (b.fullScore || 1)) - ((a.score || 0) / (a.fullScore || 1)))[0];
+    return {
+      ...publicUser(student),
+      joinedAt: enrollments.find((item) => item.userId === student.id)?.createdAt || "",
+      attemptCount: studentAttempts.length,
+      bestObjective: bestObjective ? {
+        paperTitle: bestObjective.paperTitle,
+        score: bestObjective.score,
+        fullScore: bestObjective.fullScore,
+        createdAt: bestObjective.createdAt
+      } : null,
+      acceptedPrograms: studentAttempts.filter((item) => item.type === "program" && item.status === "accepted").length
+    };
+  });
+  return {
+    class: classPayload(klass, db),
+    assignments: assignments.map((assignment) => ({
+      ...assignment,
+      paperTitle: papers.find((paper) => paper.id === assignment.paperId)?.title || assignment.title
+    })),
+    students: studentRows,
+    recentAttempts: attempts.slice(0, 30)
   };
 }
 
@@ -493,6 +572,10 @@ async function api(req, res) {
 
   if (req.method === "GET" && url.pathname === "/api/papers") {
     return sendJson(res, 200, { papers: papers.map(publicPaper) });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/exam-types") {
+    return sendJson(res, 200, { examTypes: db.examTypes.map(publicExamType) });
   }
 
   if (req.method === "GET" && url.pathname === "/api/me") {
@@ -655,7 +738,7 @@ async function api(req, res) {
     const user = requireTeacher(req, res, db);
     if (!user) return;
     const body = await readBody(req);
-    const paper = validatePaper(body.paper || body);
+    const paper = validatePaper(body.paper || body, db);
     const index = papers.findIndex((item) => item.id === paper.id);
     const now = new Date().toISOString();
     if (index >= 0) {
@@ -668,6 +751,47 @@ async function api(req, res) {
     savePapers(papers);
     saveDb(db);
     return sendJson(res, 200, { paper });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/admin/exam-types") {
+    const user = requireAdmin(req, res, db);
+    if (!user) return;
+    const body = await readBody(req);
+    const id = String(body.id || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+    const name = String(body.name || "").trim();
+    if (!/^[a-z][a-z0-9_-]{1,20}$/.test(id)) {
+      return sendJson(res, 400, { message: "考试类型 ID 需字母开头，2-21 位英文、数字、下划线或短横线。" });
+    }
+    if (!name) return sendJson(res, 400, { message: "考试类型名称不能为空。" });
+    const existing = db.examTypes.find((item) => item.id === id);
+    const examType = {
+      id,
+      name,
+      levelEnabled: existing?.builtIn ? Boolean(existing.levelEnabled) : Boolean(body.levelEnabled),
+      builtIn: existing?.builtIn || false
+    };
+    if (existing) Object.assign(existing, examType);
+    else db.examTypes.push(examType);
+    audit(db, user, existing ? "exam-type:update" : "exam-type:create", id);
+    saveDb(db);
+    return sendJson(res, 200, { examType: publicExamType(examType) });
+  }
+
+  const examTypeDelete = url.pathname.match(/^\/api\/admin\/exam-types\/([^/]+)$/);
+  if (req.method === "DELETE" && examTypeDelete) {
+    const user = requireAdmin(req, res, db);
+    if (!user) return;
+    const id = decodeURIComponent(examTypeDelete[1]);
+    const index = db.examTypes.findIndex((item) => item.id === id);
+    if (index < 0) return sendJson(res, 404, { message: "考试类型不存在。" });
+    if (db.examTypes[index].builtIn) return sendJson(res, 400, { message: "内置考试类型不能删除，可以修改名称。" });
+    if (papers.some((paper) => paper.category === id) || db.classes.some((klass) => klass.category === id)) {
+      return sendJson(res, 409, { message: "已有试卷或班级正在使用该考试类型，不能删除。" });
+    }
+    db.examTypes.splice(index, 1);
+    audit(db, user, "exam-type:delete", id);
+    saveDb(db);
+    return sendJson(res, 200, { ok: true });
   }
 
   const paperDelete = url.pathname.match(/^\/api\/admin\/papers\/([^/]+)$/);
@@ -701,10 +825,14 @@ async function api(req, res) {
     const body = await readBody(req);
     const name = String(body.name || "").trim();
     if (!name) return sendJson(res, 400, { message: "班级名称不能为空。" });
+    const category = String(body.category || "gesp").trim();
+    const examType = db.examTypes.find((item) => item.id === category);
+    if (!examType) return sendJson(res, 400, { message: "考试类型不存在。" });
     const klass = {
       id: crypto.randomUUID(),
       name,
-      level: Number(body.level || 1),
+      category,
+      level: examType.levelEnabled ? Number(body.level || 1) : null,
       description: String(body.description || "").trim(),
       teacherId: user.id,
       inviteCode: crypto.randomBytes(3).toString("hex").toUpperCase(),
@@ -757,6 +885,18 @@ async function api(req, res) {
     audit(db, user, "assignment:create", assignment.id);
     saveDb(db);
     return sendJson(res, 201, { assignment });
+  }
+
+  const classReport = url.pathname.match(/^\/api\/classes\/([^/]+)\/report$/);
+  if (req.method === "GET" && classReport) {
+    const user = requireTeacher(req, res, db);
+    if (!user) return;
+    const classId = decodeURIComponent(classReport[1]);
+    const klass = db.classes.find((item) => item.id === classId);
+    if (!klass || (!isAdmin(user) && klass.teacherId !== user.id)) {
+      return sendJson(res, 404, { message: "班级不存在或无权限。" });
+    }
+    return sendJson(res, 200, classReportPayload(klass, db, papers));
   }
 
   if (req.method === "GET" && url.pathname === "/api/admin/users") {

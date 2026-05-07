@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="260" height="64" viewBox="0 0 260 64" role="img" aria-labelledby="title">
+  <title id="title">GESP 练习平台</title>
+  <rect width="260" height="64" rx="8" fill="#0f766e"/>
+  <path d="M22 18h29a12 12 0 0 1 0 24H36v-8h15a4 4 0 0 0 0-8H30v20h-8z" fill="#fff"/>
+  <path d="M70 18h44v8H78v6h30v8H78v6h37v8H70z" fill="#d1fae5"/>
+  <path d="M126 18h31c9 0 15 6 15 14s-6 14-15 14h-23v8h-8zm8 8v12h22c5 0 8-2 8-6s-3-6-8-6z" fill="#fff"/>
+  <path d="M184 18h46v8h-38v6h32v8h-32v14h-8z" fill="#d1fae5"/>
+  <text x="22" y="58" fill="#ccfbf1" font-family="Arial, sans-serif" font-size="10">PRACTICE · JUDGE · GROW</text>
+</svg>

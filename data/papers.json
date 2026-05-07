@@ -1,0 +1,368 @@
+[
+  {
+    "id": "new-paper-id",
+    "title": "新建 GESP 练习卷123",
+    "level": 1,
+    "language": "C++",
+    "year": 2026,
+    "month": "06",
+    "participants": 0,
+    "views": 0,
+    "summary": "请填写试卷说明",
+    "questions": [
+      {
+        "id": "q1",
+        "type": "single",
+        "score": 2,
+        "stem": "示例单选题",
+        "choices": [
+          "A 选项",
+          "B 选项",
+          "C 选项",
+          "D 选项"
+        ],
+        "answer": 0,
+        "explanation": "这里写解析。"
+      }
+    ],
+    "createdBy": "6500f36e-7d73-4e50-9cef-dfdca275457f",
+    "createdAt": "2026-05-07T05:53:07.890Z",
+    "updatedBy": "6500f36e-7d73-4e50-9cef-dfdca275457f",
+    "updatedAt": "2026-05-07T05:53:07.890Z"
+  },
+  {
+    "id": "cpp-level-1-sample",
+    "title": "GESP C++ 一级能力样卷",
+    "level": 1,
+    "language": "C++",
+    "year": 2026,
+    "month": "03",
+    "participants": 928,
+    "views": 8295,
+    "summary": "变量、表达式、输入输出和基础判断。",
+    "questions": [
+      {
+        "id": "l1-s1",
+        "type": "single",
+        "score": 2,
+        "stem": "在 C++ 中，下列哪个语句可以定义一个整型变量 n？",
+        "choices": [
+          "int n;",
+          "number n;",
+          "var n;",
+          "n int;"
+        ],
+        "answer": 0,
+        "explanation": "C++ 使用类型名在前的声明方式，int n; 表示定义一个整型变量。"
+      },
+      {
+        "id": "l1-s2",
+        "type": "single",
+        "score": 2,
+        "stem": "表达式 7 / 2 在两个操作数都是 int 时，结果是（）。",
+        "choices": [
+          "3",
+          "3.5",
+          "4",
+          "报错"
+        ],
+        "answer": 0,
+        "explanation": "整数除法会舍去小数部分。"
+      },
+      {
+        "id": "l1-j1",
+        "type": "judge",
+        "score": 2,
+        "stem": "C++ 中的变量名区分大小写，score 和 Score 是两个不同的标识符。",
+        "answer": true,
+        "explanation": "C++ 标识符大小写敏感。"
+      },
+      {
+        "id": "l1-p1",
+        "type": "program",
+        "score": 25,
+        "title": "一天中的第几秒",
+        "statement": "输入时、分、秒，输出这个时刻是当天的第几秒。约定 0:0:0 的结果为 0。",
+        "input": "一行三个整数 h m s，满足 0 <= h < 24，0 <= m,s < 60。",
+        "output": "输出一个整数。",
+        "samples": [
+          {
+            "input": "0 0 0\n",
+            "output": "0\n"
+          },
+          {
+            "input": "23 59 59\n",
+            "output": "86399\n"
+          }
+        ],
+        "tests": [
+          {
+            "input": "1 2 3\n",
+            "output": "3723\n"
+          },
+          {
+            "input": "12 0 0\n",
+            "output": "43200\n"
+          }
+        ]
+      },
+      {
+        "id": "l1-p2",
+        "type": "program",
+        "score": 25,
+        "title": "数字替换",
+        "statement": "Alice 不喜欢数字 4。输入一个非负整数，把其中所有数字 4 替换成 8 后输出。",
+        "input": "一行一个非负整数 A，0 <= A <= 100000000。",
+        "output": "输出替换后的整数。",
+        "samples": [
+          {
+            "input": "8459045\n",
+            "output": "8859085\n"
+          },
+          {
+            "input": "123\n",
+            "output": "123\n"
+          }
+        ],
+        "tests": [
+          {
+            "input": "4\n",
+            "output": "8\n"
+          },
+          {
+            "input": "404040\n",
+            "output": "808080\n"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "cpp-level-2-loop",
+    "title": "GESP C++ 二级循环专题卷",
+    "level": 2,
+    "language": "C++",
+    "year": 2026,
+    "month": "04",
+    "participants": 287,
+    "views": 2754,
+    "summary": "循环、累加、取模和简单数位处理。",
+    "questions": [
+      {
+        "id": "l2-s1",
+        "type": "single",
+        "score": 2,
+        "stem": "for (int i = 1; i <= 5; i += 2) 循环体会执行几次？",
+        "choices": [
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "answer": 1,
+        "explanation": "i 的值依次为 1、3、5，共执行 3 次。"
+      },
+      {
+        "id": "l2-j1",
+        "type": "judge",
+        "score": 2,
+        "stem": "while 循环的条件如果一开始就是 false，循环体一次也不会执行。",
+        "answer": true,
+        "explanation": "while 是先判断再执行。"
+      },
+      {
+        "id": "l2-p1",
+        "type": "program",
+        "score": 25,
+        "title": "数位和",
+        "statement": "输入一个正整数 n，输出它各个数位之和。",
+        "input": "一行一个正整数 n，1 <= n <= 1000000000。",
+        "output": "输出一个整数。",
+        "samples": [
+          {
+            "input": "123\n",
+            "output": "6\n"
+          },
+          {
+            "input": "9005\n",
+            "output": "14\n"
+          }
+        ],
+        "tests": [
+          {
+            "input": "1\n",
+            "output": "1\n"
+          },
+          {
+            "input": "987654321\n",
+            "output": "45\n"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "cpp-level-3-array",
+    "title": "GESP C++ 三级数组基础卷",
+    "level": 3,
+    "language": "C++",
+    "year": 2026,
+    "month": "05",
+    "participants": 172,
+    "views": 1781,
+    "summary": "数组、最大值、字符串和简单函数。",
+    "questions": [
+      {
+        "id": "l3-s1",
+        "type": "single",
+        "score": 2,
+        "stem": "int a[10]; 中可以访问的最后一个合法下标是（）。",
+        "choices": [
+          "9",
+          "10",
+          "11",
+          "不确定"
+        ],
+        "answer": 0,
+        "explanation": "长度为 10 的数组下标范围是 0 到 9。"
+      },
+      {
+        "id": "l3-j1",
+        "type": "judge",
+        "score": 2,
+        "stem": "C++ string 的 length() 可以得到字符串长度。",
+        "answer": true,
+        "explanation": "std::string 提供 length() 和 size()。"
+      },
+      {
+        "id": "l3-p1",
+        "type": "program",
+        "score": 25,
+        "title": "找最大数",
+        "statement": "输入 n 个整数，输出其中的最大值。",
+        "input": "第一行 n，第二行 n 个整数。1 <= n <= 100。",
+        "output": "输出一个整数。",
+        "samples": [
+          {
+            "input": "5\n3 8 2 7 1\n",
+            "output": "8\n"
+          },
+          {
+            "input": "3\n-4 -2 -9\n",
+            "output": "-2\n"
+          }
+        ],
+        "tests": [
+          {
+            "input": "1\n42\n",
+            "output": "42\n"
+          },
+          {
+            "input": "6\n10 10 9 8 7 6\n",
+            "output": "10\n"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "cpp-level-4-branch",
+    "title": "GESP C++ 四级综合训练卷",
+    "level": 4,
+    "language": "C++",
+    "year": 2026,
+    "month": "05",
+    "participants": 127,
+    "views": 1351,
+    "summary": "分支、循环和简单模拟。",
+    "questions": [
+      {
+        "id": "l4-s1",
+        "type": "single",
+        "score": 2,
+        "stem": "表达式 !(a == b) 与下列哪一个表达式等价？",
+        "choices": [
+          "a != b",
+          "a = b",
+          "a < b",
+          "a > b"
+        ],
+        "answer": 0,
+        "explanation": "对相等取反就是不相等。"
+      },
+      {
+        "id": "l4-p1",
+        "type": "program",
+        "score": 25,
+        "title": "统计偶数",
+        "statement": "输入 n 个整数，输出其中偶数的个数。",
+        "input": "第一行 n，第二行 n 个整数。",
+        "output": "输出一个整数。",
+        "samples": [
+          {
+            "input": "5\n1 2 3 4 6\n",
+            "output": "3\n"
+          }
+        ],
+        "tests": [
+          {
+            "input": "4\n1 3 5 7\n",
+            "output": "0\n"
+          },
+          {
+            "input": "4\n0 -2 8 9\n",
+            "output": "3\n"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "cpp-level-5-template",
+    "title": "GESP C++ 五级模拟卷",
+    "level": 5,
+    "language": "C++",
+    "year": 2026,
+    "month": "06",
+    "participants": 81,
+    "views": 949,
+    "summary": "可继续导入更多真题与专题题。",
+    "questions": []
+  },
+  {
+    "id": "cpp-level-6-template",
+    "title": "GESP C++ 六级模拟卷",
+    "level": 6,
+    "language": "C++",
+    "year": 2026,
+    "month": "06",
+    "participants": 40,
+    "views": 814,
+    "summary": "可继续导入更多真题与专题题。",
+    "questions": []
+  },
+  {
+    "id": "cpp-level-7-template",
+    "title": "GESP C++ 七级模拟卷",
+    "level": 7,
+    "language": "C++",
+    "year": 2026,
+    "month": "06",
+    "participants": 17,
+    "views": 536,
+    "summary": "可继续导入更多真题与专题题。",
+    "questions": []
+  },
+  {
+    "id": "cpp-level-8-template",
+    "title": "GESP C++ 八级模拟卷",
+    "level": 8,
+    "language": "C++",
+    "year": 2026,
+    "month": "06",
+    "participants": 62,
+    "views": 1306,
+    "summary": "可继续导入更多真题与专题题。",
+    "questions": []
+  }
+]

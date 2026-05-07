@@ -1,0 +1,12 @@
+{
+  "name": "gesp-practice-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A local GESP practice platform with account, papers, objective grading and C++ judging.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

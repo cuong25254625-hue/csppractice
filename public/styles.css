@@ -245,6 +245,92 @@ button {
   color: #e5e7eb;
 }
 
+.json-editor.compact {
+  min-height: 260px;
+}
+
+.advanced-json {
+  margin-top: 14px;
+}
+
+.advanced-json summary {
+  cursor: pointer;
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.builder {
+  margin-top: 14px;
+  display: grid;
+  gap: 14px;
+}
+
+.builder-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.builder-meta label,
+.builder-question label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+}
+
+.builder-meta .span-2 {
+  grid-column: span 2;
+}
+
+.builder input,
+.builder select,
+.builder textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: #fff;
+  color: var(--text);
+}
+
+.builder textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.builder-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.builder-list {
+  display: grid;
+  gap: 12px;
+}
+
+.builder-question {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfdff;
+}
+
+.choice-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.choice-editor label {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -270,6 +356,48 @@ button {
 
 .stat-card span {
   color: var(--muted);
+}
+
+.progress-row {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 13px;
+}
+
+.progress-row > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.progress-bar {
+  height: 8px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: #e5e7eb;
+}
+
+.progress-bar span {
+  display: block;
+  height: 100%;
+  background: var(--brand);
+}
+
+.wrong-list {
+  display: grid;
+  gap: 12px;
+}
+
+.wrong-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+
+.choice-list {
+  margin: 10px 0;
+  padding-left: 22px;
 }
 
 .paper-list {
@@ -646,6 +774,15 @@ button {
 
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .builder-meta,
+  .choice-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .builder-meta .span-2 {
+    grid-column: span 1;
   }
 }
 

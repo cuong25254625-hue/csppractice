@@ -1,170 +1,42 @@
 {
   "users": [
     {
-      "id": "6500f36e-7d73-4e50-9cef-dfdca275457f",
+      "id": "7e2645ed-ad48-43fb-81b1-b3bd2eb53914",
       "username": "admin",
       "role": "admin",
       "status": "active",
-      "salt": "dcbc6a579e89039f1906e7b70300ed54",
-      "passwordHash": "6e2f891b0a34e81ca097b0274348fb0abe989dd4ab4a7bf5233162571ec51829c0cac4ec8aa2134460aa44d57b677093f0506e11fded8c44c26721a83fe3ab19",
-      "createdAt": "2026-05-07T05:46:05.664Z"
+      "salt": "7d5d4fdf894bc7d23026ac989f572d51",
+      "passwordHash": "74f5259aae80c52d9b7095bc687394671f10e2c133ccd4fc5a72b5965f3daf0aa3c7a46df596502b185ac0d6ea8d179d6eb03ac77e369bfbc5e32834d98b30cc",
+      "createdAt": "2026-05-07T06:24:25.342Z"
     },
     {
-      "id": "3a8e78e4-9ae8-43bd-b6c8-32ea2ecbd9d0",
+      "id": "ba1d4171-da52-4368-b6c3-63df4d01bffc",
       "username": "teacher",
       "role": "teacher",
       "status": "active",
-      "salt": "a48ee954b18d8739db1e3866c370fb7e",
-      "passwordHash": "d624a449c0f64b77ae67ba707aae67fc8b808560113cc55ddb560bc221134a6c9a9e6262cd164e7c11592daa5246b3de775892525be8267c28c0d00a83b1113c",
-      "createdAt": "2026-05-07T05:46:05.706Z"
+      "salt": "ca05fd6cbb24cfbcc50a6aa9146a9e98",
+      "passwordHash": "fd8288e41566fec77d33b5b12cf05a7ee6704e9d283757118ab6bac105b0587f8bd9a0c2fbd0cbe92ec4f85edfc4a3b120d72e61eff564f4e494369c117d51aa",
+      "createdAt": "2026-05-07T06:24:25.399Z"
     },
     {
-      "id": "41ee6be0-a926-43d4-a963-06babb4036bc",
+      "id": "93235b76-0e14-4408-b163-46691cb35aa7",
       "username": "demo",
       "role": "student",
       "status": "active",
-      "salt": "6b5b40802e71bfb7385c70573d48d6c1",
-      "passwordHash": "61423da1a85b2b5a6e1eba49fe2403f3d996c5a8352d319e22793a308e0b248bb162d87e04d6be7320874ecee32be6632a36bb2b290edd8da786b0fcc736802c",
-      "createdAt": "2026-05-07T05:46:05.748Z"
-    },
-    {
-      "id": "efbd1cd9-54cc-406d-8707-5e41d02f3bd7",
-      "username": "ad123",
-      "role": "student",
-      "status": "active",
-      "salt": "692d4ef9800c67f8e1b956c2c7091ea5",
-      "passwordHash": "84ddd001a4065cd84a430b7d39c8cab3e439bef775c601db8236f6fdfbe364266df9de1f490f3b2ff9da7cf2998a25481e1500d866fc39a42f7d5bcf4cffabf5",
-      "createdAt": "2026-05-07T05:54:33.138Z"
+      "salt": "6ea9adbafa46b31bce4cebb4cc0309b8",
+      "passwordHash": "509189e2985d79162d36056877f2758f0fdbbb70d18b32d6157aa2ea018de581cc24988dfb72c3d1315c3f6c6240ca41e23a78a5622d30be466a39578912f41e",
+      "createdAt": "2026-05-07T06:24:25.454Z"
     }
   ],
   "sessions": {
-    "ce8991f6bc6df29f95a7d6cb1d30f16cac5213bf92d32916": {
-      "userId": "3a8e78e4-9ae8-43bd-b6c8-32ea2ecbd9d0",
-      "createdAt": "2026-05-07T05:46:17.053Z"
+    "1d09066b5b365767b2842d0741609a9b6abd1cf5de85a1c2": {
+      "userId": "93235b76-0e14-4408-b163-46691cb35aa7",
+      "createdAt": "2026-05-07T06:24:25.508Z"
     }
   },
-  "attempts": [
-    {
-      "id": "1b772d16-35e3-4bcd-8c4e-89e0752b1c4b",
-      "userId": "efbd1cd9-54cc-406d-8707-5e41d02f3bd7",
-      "username": "ad123",
-      "createdAt": "2026-05-07T05:54:49.864Z",
-      "type": "objective",
-      "paperId": "cpp-level-1-sample",
-      "paperTitle": "GESP C++ 一级能力样卷",
-      "score": 2,
-      "fullScore": 6,
-      "details": [
-        {
-          "id": "l1-s1",
-          "correct": false,
-          "userAnswer": 2,
-          "answer": 0,
-          "score": 0,
-          "fullScore": 2,
-          "explanation": "C++ 使用类型名在前的声明方式，int n; 表示定义一个整型变量。"
-        },
-        {
-          "id": "l1-s2",
-          "correct": true,
-          "userAnswer": 0,
-          "answer": 0,
-          "score": 2,
-          "fullScore": 2,
-          "explanation": "整数除法会舍去小数部分。"
-        },
-        {
-          "id": "l1-j1",
-          "correct": false,
-          "userAnswer": false,
-          "answer": true,
-          "score": 0,
-          "fullScore": 2,
-          "explanation": "C++ 标识符大小写敏感。"
-        }
-      ]
-    },
-    {
-      "id": "dff9dea2-d95c-465d-98a8-0a656f5a537b",
-      "userId": "6500f36e-7d73-4e50-9cef-dfdca275457f",
-      "username": "admin",
-      "createdAt": "2026-05-07T05:53:56.230Z",
-      "type": "objective",
-      "paperId": "new-paper-id",
-      "paperTitle": "新建 GESP 练习卷123",
-      "score": 2,
-      "fullScore": 2,
-      "details": [
-        {
-          "id": "q1",
-          "correct": true,
-          "userAnswer": 0,
-          "answer": 0,
-          "score": 2,
-          "fullScore": 2,
-          "explanation": "这里写解析。"
-        }
-      ]
-    }
-  ],
-  "classes": [
-    {
-      "id": "088971d0-8339-4501-a98c-e2fec3d29c78",
-      "name": "二级",
-      "level": 2,
-      "description": "",
-      "teacherId": "6500f36e-7d73-4e50-9cef-dfdca275457f",
-      "inviteCode": "A04FB5",
-      "createdAt": "2026-05-07T05:53:31.991Z"
-    }
-  ],
-  "enrollments": [
-    {
-      "id": "8e57b0bd-3273-4512-8d2b-f58fdbfc92c1",
-      "classId": "088971d0-8339-4501-a98c-e2fec3d29c78",
-      "userId": "6500f36e-7d73-4e50-9cef-dfdca275457f",
-      "createdAt": "2026-05-07T05:54:12.274Z"
-    },
-    {
-      "id": "e8948f51-9159-44a1-997c-e8e38788134c",
-      "classId": "088971d0-8339-4501-a98c-e2fec3d29c78",
-      "userId": "efbd1cd9-54cc-406d-8707-5e41d02f3bd7",
-      "createdAt": "2026-05-07T05:54:38.022Z"
-    }
-  ],
+  "attempts": [],
+  "classes": [],
+  "enrollments": [],
   "assignments": [],
-  "auditLogs": [
-    {
-      "id": "bbbdcc2f-b5aa-4c71-9cec-37e784612f86",
-      "userId": "efbd1cd9-54cc-406d-8707-5e41d02f3bd7",
-      "username": "ad123",
-      "action": "class:join",
-      "target": "088971d0-8339-4501-a98c-e2fec3d29c78",
-      "createdAt": "2026-05-07T05:54:38.022Z"
-    },
-    {
-      "id": "53eef928-ff48-47c2-8aaa-cf951d16f5cd",
-      "userId": "6500f36e-7d73-4e50-9cef-dfdca275457f",
-      "username": "admin",
-      "action": "class:join",
-      "target": "088971d0-8339-4501-a98c-e2fec3d29c78",
-      "createdAt": "2026-05-07T05:54:12.274Z"
-    },
-    {
-      "id": "3de4e460-600e-4e01-b6eb-2e696f0e42ea",
-      "userId": "6500f36e-7d73-4e50-9cef-dfdca275457f",
-      "username": "admin",
-      "action": "class:create",
-      "target": "088971d0-8339-4501-a98c-e2fec3d29c78",
-      "createdAt": "2026-05-07T05:53:31.991Z"
-    },
-    {
-      "id": "b83b8562-f01d-4908-aca0-f12230c441f0",
-      "userId": "6500f36e-7d73-4e50-9cef-dfdca275457f",
-      "username": "admin",
-      "action": "paper:create",
-      "target": "new-paper-id",
-      "createdAt": "2026-05-07T05:53:07.898Z"
-    }
-  ]
+  "auditLogs": []
 }

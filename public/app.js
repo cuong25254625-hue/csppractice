@@ -5,7 +5,7 @@ const state = {
   classes: [],
   authMode: "login",
   filters: { level: "all", keyword: "" },
-  manage: { papers: [], overview: null, users: [] }
+  manage: { papers: [], overview: null, users: [], editPaper: null }
 };
 
 const app = document.querySelector("#app");
@@ -67,7 +67,7 @@ function roleName(role) {
 
 function setActiveNav(hash) {
   document.querySelectorAll("[data-link]").forEach((link) => link.classList.remove("active"));
-  const name = hash.startsWith("#/manage") ? "manage" : hash.startsWith("#/classes") ? "classes" : hash === "#/dashboard" ? "dashboard" : "home";
+  const name = hash.startsWith("#/manage") ? "manage" : hash.startsWith("#/classes") ? "classes" : hash === "#/study" ? "study" : hash === "#/dashboard" ? "dashboard" : "home";
   document.querySelector(`[data-link="${name}"]`)?.classList.add("active");
 }
 
@@ -76,6 +76,7 @@ function route() {
   setActiveNav(hash);
   if (hash.startsWith("#/paper/")) return renderPaper(decodeURIComponent(hash.replace("#/paper/", "")));
   if (hash === "#/dashboard") return renderDashboard();
+  if (hash === "#/study") return renderStudy();
   if (hash === "#/classes") return renderClasses();
   if (hash === "#/manage") return renderManage();
   renderHome();
@@ -462,6 +463,115 @@ function renderJudgeResult(result) {
   `;
 }
 
+async function renderStudy() {
+  if (!state.user) {
+    app.innerHTML = `<div class="grid"><section class="panel empty"><p>登录后可以查看学习进度、作业和错题。</p><button class="primary-btn" type="button" data-open-auth>登　录</button></section></div>`;
+    document.querySelector("[data-open-auth]")?.addEventListener("click", openAuth);
+    return;
+  }
+
+  let summary = {
+    totals: { attempts: 0, assignments: 0, pendingAssignments: 0, wrongQuestions: 0 },
+    assignments: [],
+    wrongQuestions: [],
+    progress: []
+  };
+  try {
+    summary = await api("/api/student/summary");
+  } catch (error) {
+    notify(error.message);
+  }
+
+  app.innerHTML = `
+    <div class="grid">
+      <section>
+        <div class="panel">
+          <div class="panel-head">
+            <h1>学习中心</h1>
+            <span class="muted">${escapeHtml(state.user.username)}</span>
+          </div>
+          <div class="panel-body stat-grid">
+            ${statCard("提交次数", summary.totals.attempts)}
+            ${statCard("班级作业", summary.totals.assignments)}
+            ${statCard("待完成", summary.totals.pendingAssignments)}
+            ${statCard("错题", summary.totals.wrongQuestions)}
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top: 18px;">
+          <div class="panel-head"><h2>待完成作业</h2></div>
+          <ul class="paper-list">
+            ${summary.assignments.filter((item) => !item.done).map((item) => `
+              <li class="paper-item">
+                <span class="paper-icon">作业</span>
+                <div>
+                  <h3><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a></h3>
+                  <div class="meta">
+                    <span>${escapeHtml(item.className)}</span>
+                    <span>截止 ${escapeHtml(item.dueAt || "长期")}</span>
+                    <span>客观题 ${item.bestObjective ? `${item.bestObjective.score}/${item.bestObjective.fullScore}` : "未提交"}</span>
+                    <span>编程题 ${item.acceptedPrograms}/${item.programTotal}</span>
+                  </div>
+                </div>
+                <a class="primary-btn" href="#/paper/${item.paperId}">去完成</a>
+              </li>
+            `).join("") || `<li class="empty">暂无待完成作业</li>`}
+          </ul>
+        </div>
+
+        <div class="panel" style="margin-top: 18px;">
+          <div class="panel-head"><h2>错题本</h2><span class="muted">${summary.wrongQuestions.length} 题</span></div>
+          <div class="panel-body wrong-list">
+            ${summary.wrongQuestions.map((item) => renderWrongQuestion(item)).join("") || `<div class="empty">还没有错题，保持住。</div>`}
+          </div>
+        </div>
+      </section>
+
+      <aside class="side-stack">
+        <div class="panel">
+          <div class="panel-head"><h2>等级进度</h2></div>
+          <div class="panel-body">
+            ${summary.progress.map((item) => {
+              const percent = item.total ? Math.round((item.practiced / item.total) * 100) : 0;
+              return `<div class="progress-row"><div><strong>${item.level} 级</strong><span class="muted">${item.practiced}/${item.total}</span></div><div class="progress-bar"><span style="width:${percent}%"></span></div></div>`;
+            }).join("")}
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>已完成作业</h2></div>
+          <div class="panel-body">
+            <ul class="mini-list">
+              ${summary.assignments.filter((item) => item.done).slice(0, 8).map((item) => `<li><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a><span class="status-ok">完成</span></li>`).join("") || `<li class="muted">暂无</li>`}
+            </ul>
+          </div>
+        </div>
+      </aside>
+    </div>
+  `;
+}
+
+function renderWrongQuestion(item) {
+  return `
+    <article class="wrong-item">
+      <div class="question-head">
+        <span>${escapeHtml(item.paperTitle)}</span>
+        <a class="secondary-btn" href="#/paper/${item.paperId}">重练</a>
+      </div>
+      <div>${nl2br(item.stem)}</div>
+      ${item.choices?.length ? `<ol class="choice-list">${item.choices.map((choice, index) => `<li>${String.fromCharCode(65 + index)}. ${escapeHtml(choice)}</li>`).join("")}</ol>` : ""}
+      <div class="meta"><span>你的答案：${escapeHtml(formatAnswer(item, item.userAnswer))}</span><span>正确答案：${escapeHtml(formatAnswer(item, item.answer))}</span></div>
+      <div class="score-box">${escapeHtml(item.explanation || "暂无解析")}</div>
+    </article>
+  `;
+}
+
+function formatAnswer(item, value) {
+  if (item.type === "judge") return value === true || value === "true" ? "正确" : "错误";
+  const index = Number(value);
+  return Number.isFinite(index) ? String.fromCharCode(65 + index) : "-";
+}
+
 function renderDashboard() {
   if (!state.user) {
     app.innerHTML = `<div class="grid"><section class="panel empty"><p>登录后可以查看练习记录。</p><button class="primary-btn" type="button" data-open-auth>登　录</button></section></div>`;
@@ -589,6 +699,7 @@ async function renderManage() {
   }
 
   const overview = state.manage.overview || { totals: {}, classes: [], assignments: [], recentAttempts: [] };
+  state.manage.editPaper ||= samplePaper();
   app.innerHTML = `
     <div class="grid">
       <section>
@@ -606,7 +717,7 @@ async function renderManage() {
         </div>
 
         <div class="panel" style="margin-top: 18px;">
-          <div class="panel-head"><h2>题库管理</h2></div>
+          <div class="panel-head"><h2>可视化建卷</h2></div>
           <div class="panel-body">
             <div class="form-grid">
               <select id="paperSelect">
@@ -616,10 +727,15 @@ async function renderManage() {
               <button class="secondary-btn" type="button" id="loadPaper">载入</button>
               <button class="danger-btn" type="button" id="deletePaper">删除</button>
             </div>
-            <textarea class="json-editor" id="paperJson" spellcheck="false">${escapeHtml(JSON.stringify(samplePaper(), null, 2))}</textarea>
+            ${renderPaperBuilder(state.manage.editPaper || samplePaper())}
+            <details class="advanced-json">
+              <summary>高级 JSON 导入/导出</summary>
+              <textarea class="json-editor compact" id="paperJson" spellcheck="false">${escapeHtml(JSON.stringify(state.manage.editPaper || samplePaper(), null, 2))}</textarea>
+            </details>
             <div class="submit-row">
               <button class="primary-btn" type="button" id="savePaper">保存试卷</button>
-              <span class="muted">支持完整 JSON 导入，含答案和隐藏测试点。</span>
+              <button class="secondary-btn" type="button" id="syncJson">同步到 JSON</button>
+              <span class="muted">日常用表单建卷；复杂导入可展开 JSON。</span>
             </div>
           </div>
         </div>
@@ -659,6 +775,13 @@ async function renderManage() {
 
   document.querySelector("#loadPaper").addEventListener("click", loadPaperIntoEditor);
   document.querySelector("#savePaper").addEventListener("click", savePaperFromEditor);
+  document.querySelector("#syncJson").addEventListener("click", syncBuilderToJson);
+  document.querySelector("#addSingle").addEventListener("click", () => addBuilderQuestion("single"));
+  document.querySelector("#addJudge").addEventListener("click", () => addBuilderQuestion("judge"));
+  document.querySelector("#addProgram").addEventListener("click", () => addBuilderQuestion("program"));
+  document.querySelectorAll("[data-remove-question]").forEach((button) => {
+    button.addEventListener("click", () => removeBuilderQuestion(Number(button.dataset.removeQuestion)));
+  });
   document.querySelector("#deletePaper").addEventListener("click", deleteSelectedPaper);
   document.querySelector("#createClass").addEventListener("click", createClass);
   document.querySelector("#createAssignment").addEventListener("click", createAssignment);
@@ -667,6 +790,157 @@ async function renderManage() {
 
 function statCard(label, value) {
   return `<div class="stat-card"><strong>${value}</strong><span>${label}</span></div>`;
+}
+
+function renderPaperBuilder(paper) {
+  const questions = paper.questions || [];
+  return `
+    <div class="builder">
+      <div class="builder-meta">
+        <label><span>试卷 ID</span><input id="paperIdInput" value="${escapeHtml(paper.id)}"></label>
+        <label><span>标题</span><input id="paperTitleInput" value="${escapeHtml(paper.title)}"></label>
+        <label><span>等级</span><select id="paperLevelInput">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}" ${Number(paper.level) === index + 1 ? "selected" : ""}>${index + 1} 级</option>`).join("")}</select></label>
+        <label><span>月份</span><input id="paperMonthInput" value="${escapeHtml(paper.month || "06")}"></label>
+        <label class="span-2"><span>说明</span><input id="paperSummaryInput" value="${escapeHtml(paper.summary || "")}"></label>
+      </div>
+      <div class="builder-toolbar">
+        <button class="secondary-btn" type="button" id="addSingle">添加单选题</button>
+        <button class="secondary-btn" type="button" id="addJudge">添加判断题</button>
+        <button class="secondary-btn" type="button" id="addProgram">添加编程题</button>
+      </div>
+      <div class="builder-list">
+        ${questions.map((question, index) => renderBuilderQuestion(question, index)).join("") || `<div class="empty">还没有题目，先添加一题。</div>`}
+      </div>
+    </div>
+  `;
+}
+
+function renderBuilderQuestion(question, index) {
+  const typeName = question.type === "single" ? "单选题" : question.type === "judge" ? "判断题" : "编程题";
+  return `
+    <article class="builder-question" data-builder-question="${index}">
+      <div class="question-head">
+        <span>第 ${index + 1} 题 · ${typeName}</span>
+        <button class="danger-btn" type="button" data-remove-question="${index}">删除</button>
+      </div>
+      <input data-field="id" value="${escapeHtml(question.id || `q${index + 1}`)}" placeholder="题目 ID">
+      <input data-field="score" type="number" value="${Number(question.score || 2)}" placeholder="分值">
+      ${question.type === "program" ? renderProgramBuilder(question) : renderObjectiveBuilder(question)}
+    </article>
+  `;
+}
+
+function renderObjectiveBuilder(question) {
+  const choices = question.type === "single" ? [...(question.choices || []), "", "", "", ""].slice(0, 4) : [];
+  return `
+    <textarea data-field="stem" placeholder="题干">${escapeHtml(question.stem || "")}</textarea>
+    ${
+      question.type === "single"
+        ? `<div class="choice-editor">${choices.map((choice, index) => `<label><span>${String.fromCharCode(65 + index)}</span><input data-choice="${index}" value="${escapeHtml(choice)}"></label>`).join("")}</div>
+           <label><span>正确选项</span><select data-field="answer">${choices.map((_, index) => `<option value="${index}" ${Number(question.answer || 0) === index ? "selected" : ""}>${String.fromCharCode(65 + index)}</option>`).join("")}</select></label>`
+        : `<label><span>正确答案</span><select data-field="answer"><option value="true" ${question.answer !== false ? "selected" : ""}>正确</option><option value="false" ${question.answer === false ? "selected" : ""}>错误</option></select></label>`
+    }
+    <textarea data-field="explanation" placeholder="解析">${escapeHtml(question.explanation || "")}</textarea>
+  `;
+}
+
+function renderProgramBuilder(question) {
+  return `
+    <input data-field="title" value="${escapeHtml(question.title || "")}" placeholder="编程题标题">
+    <textarea data-field="statement" placeholder="题面描述">${escapeHtml(question.statement || "")}</textarea>
+    <textarea data-field="input" placeholder="输入格式">${escapeHtml(question.input || "")}</textarea>
+    <textarea data-field="output" placeholder="输出格式">${escapeHtml(question.output || "")}</textarea>
+    <textarea data-field="samplesText" placeholder="样例，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.samples || []))}</textarea>
+    <textarea data-field="testsText" placeholder="隐藏测试点，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.tests || []))}</textarea>
+  `;
+}
+
+function formatCases(cases) {
+  return cases.map((item) => `${item.input || ""}\n===\n${item.output || ""}`).join("\n---\n");
+}
+
+function parseCases(text) {
+  return String(text || "")
+    .split(/\n---\n/g)
+    .map((block) => block.split(/\n===\n/g))
+    .filter((parts) => parts.length >= 2 && (parts[0].trim() || parts.slice(1).join("\n").trim()))
+    .map((parts) => ({ input: parts[0].trimEnd() + "\n", output: parts.slice(1).join("\n===\n").trimEnd() + "\n" }));
+}
+
+function collectBuilderPaper() {
+  const paper = {
+    id: document.querySelector("#paperIdInput").value.trim(),
+    title: document.querySelector("#paperTitleInput").value.trim(),
+    level: Number(document.querySelector("#paperLevelInput").value),
+    language: "C++",
+    year: new Date().getFullYear(),
+    month: document.querySelector("#paperMonthInput").value.trim() || "06",
+    participants: 0,
+    views: 0,
+    summary: document.querySelector("#paperSummaryInput").value.trim(),
+    questions: []
+  };
+  document.querySelectorAll("[data-builder-question]").forEach((item) => {
+    const source = state.manage.editPaper.questions[Number(item.dataset.builderQuestion)];
+    const type = source.type;
+    const question = {
+      id: item.querySelector('[data-field="id"]').value.trim(),
+      type,
+      score: Number(item.querySelector('[data-field="score"]').value || 0)
+    };
+    if (type === "program") {
+      Object.assign(question, {
+        title: item.querySelector('[data-field="title"]').value.trim(),
+        statement: item.querySelector('[data-field="statement"]').value,
+        input: item.querySelector('[data-field="input"]').value,
+        output: item.querySelector('[data-field="output"]').value,
+        samples: parseCases(item.querySelector('[data-field="samplesText"]').value),
+        tests: parseCases(item.querySelector('[data-field="testsText"]').value)
+      });
+    } else {
+      question.stem = item.querySelector('[data-field="stem"]').value;
+      question.explanation = item.querySelector('[data-field="explanation"]').value;
+      if (type === "single") {
+        question.choices = Array.from(item.querySelectorAll("[data-choice]")).map((input) => input.value);
+        question.answer = Number(item.querySelector('[data-field="answer"]').value);
+      } else {
+        question.answer = item.querySelector('[data-field="answer"]').value === "true";
+      }
+    }
+    paper.questions.push(question);
+  });
+  return paper;
+}
+
+function syncBuilderState() {
+  state.manage.editPaper = collectBuilderPaper();
+}
+
+function syncBuilderToJson() {
+  try {
+    syncBuilderState();
+    document.querySelector("#paperJson").value = JSON.stringify(state.manage.editPaper, null, 2);
+    notify("已同步到 JSON。");
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+function addBuilderQuestion(type) {
+  syncBuilderState();
+  const id = `q${state.manage.editPaper.questions.length + 1}`;
+  const base = { id, type, score: type === "program" ? 25 : 2 };
+  if (type === "single") Object.assign(base, { stem: "", choices: ["", "", "", ""], answer: 0, explanation: "" });
+  if (type === "judge") Object.assign(base, { stem: "", answer: true, explanation: "" });
+  if (type === "program") Object.assign(base, { title: "", statement: "", input: "", output: "", samples: [], tests: [] });
+  state.manage.editPaper.questions.push(base);
+  renderManage();
+}
+
+function removeBuilderQuestion(index) {
+  syncBuilderState();
+  state.manage.editPaper.questions.splice(index, 1);
+  renderManage();
 }
 
 function samplePaper() {
@@ -697,13 +971,19 @@ function samplePaper() {
 function loadPaperIntoEditor() {
   const id = document.querySelector("#paperSelect").value;
   const paper = state.manage.papers.find((item) => item.id === id) || samplePaper();
-  document.querySelector("#paperJson").value = JSON.stringify(paper, null, 2);
+  state.manage.editPaper = JSON.parse(JSON.stringify(paper));
+  renderManage();
 }
 
 async function savePaperFromEditor() {
   try {
-    const paper = JSON.parse(document.querySelector("#paperJson").value);
+    let paper = collectBuilderPaper();
+    const jsonDetails = document.querySelector(".advanced-json");
+    if (jsonDetails?.open && document.querySelector("#paperJson").value.trim()) {
+      paper = JSON.parse(document.querySelector("#paperJson").value);
+    }
     await api("/api/admin/papers", { method: "POST", body: { paper } });
+    state.manage.editPaper = JSON.parse(JSON.stringify(paper));
     await refreshPapers();
     notify("试卷已保存。");
     renderManage();

@@ -401,6 +401,80 @@ function classPayload(klass, db) {
   };
 }
 
+function buildStudentSummary(user, db, papers) {
+  const attempts = db.attempts.filter((item) => item.userId === user.id);
+  const classIds = new Set(db.enrollments.filter((item) => item.userId === user.id).map((item) => item.classId));
+  const assignments = db.assignments
+    .filter((item) => classIds.has(item.classId))
+    .map((assignment) => {
+      const paper = papers.find((item) => item.id === assignment.paperId);
+      const related = attempts.filter((item) => item.paperId === assignment.paperId);
+      const objective = related
+        .filter((item) => item.type === "objective")
+        .sort((a, b) => (b.score || 0) - (a.score || 0))[0];
+      const programs = related.filter((item) => item.type === "program" && item.status === "accepted");
+      const programTotal = (paper?.questions || []).filter((item) => item.type === "program").length;
+      const objectiveDone = Boolean(objective);
+      const programDone = programTotal === 0 || programs.length >= programTotal;
+      return {
+        ...assignment,
+        paperTitle: paper?.title || assignment.title,
+        className: db.classes.find((item) => item.id === assignment.classId)?.name || "",
+        done: objectiveDone && programDone,
+        bestObjective: objective ? { score: objective.score, fullScore: objective.fullScore } : null,
+        acceptedPrograms: programs.length,
+        programTotal
+      };
+    });
+
+  const wrongMap = new Map();
+  attempts
+    .filter((item) => item.type === "objective")
+    .forEach((attempt) => {
+      const paper = papers.find((item) => item.id === attempt.paperId);
+      (attempt.details || []).forEach((detail) => {
+        if (detail.correct) return;
+        const question = (paper?.questions || []).find((item) => item.id === detail.id);
+        if (!question) return;
+        wrongMap.set(`${attempt.paperId}:${detail.id}`, {
+          id: detail.id,
+          paperId: attempt.paperId,
+          paperTitle: attempt.paperTitle,
+          type: question.type,
+          stem: question.stem,
+          choices: question.choices || [],
+          answer: detail.answer,
+          userAnswer: detail.userAnswer,
+          explanation: detail.explanation,
+          lastWrongAt: attempt.createdAt
+        });
+      });
+    });
+
+  const progress = Array.from({ length: 8 }, (_, index) => {
+    const level = index + 1;
+    const levelPapers = papers.filter((paper) => Number(paper.level) === level);
+    const practiced = new Set(attempts.map((attempt) => attempt.paperId));
+    return {
+      level,
+      total: levelPapers.length,
+      practiced: levelPapers.filter((paper) => practiced.has(paper.id)).length
+    };
+  });
+
+  return {
+    totals: {
+      attempts: attempts.length,
+      assignments: assignments.length,
+      pendingAssignments: assignments.filter((item) => !item.done).length,
+      wrongQuestions: wrongMap.size
+    },
+    assignments,
+    wrongQuestions: Array.from(wrongMap.values()).sort((a, b) => b.lastWrongAt.localeCompare(a.lastWrongAt)),
+    progress
+  };
+}
+
 async function api(req, res) {
   const db = loadDb();
   const papers = loadPapers();
@@ -428,6 +502,12 @@ async function api(req, res) {
       attempts,
       classes
     });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/student/summary") {
+    const user = requireUser(req, res, db);
+    if (!user) return;
+    return sendJson(res, 200, buildStudentSummary(user, db, papers));
   }
 
   if (req.method === "POST" && url.pathname === "/api/register") {

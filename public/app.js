@@ -37,6 +37,8 @@ function nl2br(value) {
 
 function renderInlineMarkdown(value) {
   let html = escapeHtml(value);
+  html = html.replace(/!\[([^\]]*)\]\(((?:https?:\/\/|\/)[^)\s]+)\)/g, '<img class="markdown-image" src="$2" alt="$1">');
+  html = html.replace(/\$([^$\n]+)\$/g, '<span class="math-inline">$1</span>');
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
@@ -65,6 +67,9 @@ function renderMarkdown(value) {
 function renderMarkdownBlocks(value) {
   const blocks = String(value || "").split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
   return blocks.map((block) => {
+    if (/^\$\$[\s\S]*\$\$$/.test(block)) {
+      return `<div class="math-block">${escapeHtml(block.slice(2, -2).trim())}</div>`;
+    }
     const lines = block.split("\n");
     if (isMarkdownTable(lines)) return renderMarkdownTable(lines);
     if (lines.every((line) => /^\s*[-*]\s+/.test(line))) {
@@ -126,7 +131,7 @@ function roleName(role) {
 }
 
 function categoryName(category) {
-  return state.examTypes.find((item) => item.id === category)?.name || { gesp: "GESP", cspj: "CSP-J 初赛", csps: "CSP-S 初赛", csp: "CSP-J/S 初赛" }[category] || category || "综合";
+  return state.examTypes.find((item) => item.id === category)?.name || { gesp: "GESP", cspj: "CSP-J 初赛", csps: "CSP-S 初赛" }[category] || category || "综合";
 }
 
 function examTypeById(id) {
@@ -722,6 +727,7 @@ async function renderManage() {
   document.querySelector("#addJudge").addEventListener("click", () => addBuilderQuestion("judge"));
   document.querySelector("#addProgram").addEventListener("click", () => addBuilderQuestion("program"));
   document.querySelectorAll("[data-remove-question]").forEach((button) => button.addEventListener("click", () => removeBuilderQuestion(Number(button.dataset.removeQuestion))));
+  document.querySelectorAll("[data-insert-markdown]").forEach((button) => button.addEventListener("click", () => insertMarkdownSnippet(button)));
   document.querySelector("#deletePaper").addEventListener("click", deleteSelectedPaper);
   document.querySelector("#createClass").addEventListener("click", createClass);
   document.querySelector("#classCategory").addEventListener("change", updateClassLevelVisibility);
@@ -763,13 +769,17 @@ function renderBuilderQuestion(question, index) {
   return `<article class="builder-question" data-builder-question="${index}"><div class="question-head"><span>第 ${index + 1} 题 · ${typeName}</span><button class="danger-btn" type="button" data-remove-question="${index}">删除</button></div><input data-field="id" value="${escapeHtml(question.id || `q${index + 1}`)}" placeholder="题目 ID"><input data-field="score" type="number" value="${Number(question.score || 2)}" placeholder="分值">${question.type === "program" ? renderProgramBuilder(question) : renderObjectiveBuilder(question)}</article>`;
 }
 
+function markdownInsertTools(field) {
+  return `<div class="markdown-tools"><button class="secondary-btn" type="button" data-insert-markdown="code" data-target-field="${field}">插入代码</button><button class="secondary-btn" type="button" data-insert-markdown="formula" data-target-field="${field}">插入公式</button><button class="secondary-btn" type="button" data-insert-markdown="image" data-target-field="${field}">插入图片</button></div>`;
+}
+
 function renderObjectiveBuilder(question) {
   const choices = question.type === "single" ? [...(question.choices || []), "", "", "", ""].slice(0, 4) : [];
-  return `<textarea data-field="stem" placeholder="题干，支持 Markdown 代码块">${escapeHtml(question.stem || "")}</textarea>${question.type === "single" ? `<div class="choice-editor">${choices.map((choice, index) => `<label><span>${String.fromCharCode(65 + index)}</span><input data-choice="${index}" value="${escapeHtml(choice)}"></label>`).join("")}</div><label><span>正确选项</span><select data-field="answer">${choices.map((_, index) => `<option value="${index}" ${Number(question.answer || 0) === index ? "selected" : ""}>${String.fromCharCode(65 + index)}</option>`).join("")}</select></label>` : `<label><span>正确答案</span><select data-field="answer"><option value="true" ${question.answer !== false ? "selected" : ""}>正确</option><option value="false" ${question.answer === false ? "selected" : ""}>错误</option></select></label>`}<textarea data-field="explanation" placeholder="解析，支持 Markdown">${escapeHtml(question.explanation || "")}</textarea>`;
+  return `${markdownInsertTools("stem")}<textarea data-field="stem" placeholder="题干，支持 Markdown 代码块">${escapeHtml(question.stem || "")}</textarea>${question.type === "single" ? `<div class="choice-editor">${choices.map((choice, index) => `<label><span>${String.fromCharCode(65 + index)}</span><input data-choice="${index}" value="${escapeHtml(choice)}"></label>`).join("")}</div><label><span>正确选项</span><select data-field="answer">${choices.map((_, index) => `<option value="${index}" ${Number(question.answer || 0) === index ? "selected" : ""}>${String.fromCharCode(65 + index)}</option>`).join("")}</select></label>` : `<label><span>正确答案</span><select data-field="answer"><option value="true" ${question.answer !== false ? "selected" : ""}>正确</option><option value="false" ${question.answer === false ? "selected" : ""}>错误</option></select></label>`}${markdownInsertTools("explanation")}<textarea data-field="explanation" placeholder="解析，支持 Markdown">${escapeHtml(question.explanation || "")}</textarea>`;
 }
 
 function renderProgramBuilder(question) {
-  return `<input data-field="title" value="${escapeHtml(question.title || "")}" placeholder="编程题标题"><textarea data-field="statement" placeholder="题面描述，支持 Markdown 代码块">${escapeHtml(question.statement || "")}</textarea><textarea data-field="input" placeholder="输入格式，支持 Markdown">${escapeHtml(question.input || "")}</textarea><textarea data-field="output" placeholder="输出格式，支持 Markdown">${escapeHtml(question.output || "")}</textarea><textarea data-field="samplesText" placeholder="样例，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.samples || []))}</textarea><textarea data-field="testsText" placeholder="隐藏测试点，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.tests || []))}</textarea>`;
+  return `<input data-field="title" value="${escapeHtml(question.title || "")}" placeholder="编程题标题">${markdownInsertTools("statement")}<textarea data-field="statement" placeholder="题面描述，支持 Markdown 代码块">${escapeHtml(question.statement || "")}</textarea><textarea data-field="input" placeholder="输入格式，支持 Markdown">${escapeHtml(question.input || "")}</textarea><textarea data-field="output" placeholder="输出格式，支持 Markdown">${escapeHtml(question.output || "")}</textarea><textarea data-field="samplesText" placeholder="样例，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.samples || []))}</textarea><textarea data-field="testsText" placeholder="隐藏测试点，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.tests || []))}</textarea>`;
 }
 
 function formatCases(cases) {
@@ -835,6 +845,31 @@ function syncBuilderToJson() {
     notify("已同步到 JSON。");
   } catch (error) {
     notify(error.message);
+  }
+}
+
+function insertAtCursor(textarea, text) {
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? textarea.value.length;
+  textarea.value = `${textarea.value.slice(0, start)}${text}${textarea.value.slice(end)}`;
+  textarea.focus();
+  textarea.selectionStart = start + text.length;
+  textarea.selectionEnd = start + text.length;
+}
+
+function insertMarkdownSnippet(button) {
+  const question = button.closest("[data-builder-question]");
+  const textarea = question?.querySelector(`textarea[data-field="${button.dataset.targetField}"]`);
+  if (!textarea) return;
+  const type = button.dataset.insertMarkdown;
+  if (type === "code") {
+    insertAtCursor(textarea, "\n```cpp\nint s = 0;\ncout << s;\n```\n");
+  } else if (type === "formula") {
+    insertAtCursor(textarea, "\n$$\na^2 + b^2 = c^2\n$$\n");
+  } else if (type === "image") {
+    const url = window.prompt("请输入图片地址，例如 https://example.com/image.png");
+    if (!url) return;
+    insertAtCursor(textarea, `\n![图片说明](${url.trim()})\n`);
   }
 }
 

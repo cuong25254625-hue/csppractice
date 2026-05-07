@@ -300,6 +300,19 @@ button {
   gap: 10px;
 }
 
+.markdown-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: -4px;
+}
+
+.markdown-tools button {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 13px;
+}
+
 .builder-hint {
   margin: -4px 0 0;
   color: var(--muted);
@@ -661,6 +674,39 @@ button {
   font-weight: 700;
 }
 
+.markdown-image {
+  display: block;
+  max-width: min(100%, 720px);
+  height: auto;
+  margin: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.math-inline {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-family: "Times New Roman", serif;
+  white-space: nowrap;
+}
+
+.math-block {
+  margin: 10px 0;
+  padding: 12px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-family: "Times New Roman", serif;
+  font-size: 18px;
+  text-align: center;
+  white-space: pre;
+}
+
 .options {
   display: grid;
   gap: 8px;
@@ -785,6 +831,9 @@ button {
 }
 
 .score-summary strong {
+  display: inline-flex;
+  align-items: baseline;
+  white-space: nowrap;
   font-size: 42px;
   line-height: 1;
 }
@@ -820,6 +869,7 @@ button {
 .score-badge {
   display: inline-flex;
   align-items: baseline;
+  flex-wrap: nowrap;
   gap: 2px;
   min-width: 88px;
   padding: 4px 8px;
@@ -827,6 +877,7 @@ button {
   color: #fff;
   background: var(--brand);
   vertical-align: middle;
+  white-space: nowrap;
 }
 
 .score-badge strong {
@@ -843,6 +894,7 @@ button {
   font-style: normal;
   font-size: 12px;
   opacity: 0.95;
+  white-space: nowrap;
 }
 
 .score-badge.excellent {

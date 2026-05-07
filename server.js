@@ -67,8 +67,10 @@ function normalizeDb(db) {
   seedUser(db, "teacher", "teacher123", "teacher");
   seedUser(db, "demo", "demo123", "student");
   seedExamTypes(db);
+  db.examTypes = db.examTypes.filter((item) => item.id !== "csp");
   db.classes.forEach((klass) => {
     klass.category ||= "gesp";
+    if (klass.category === "csp") klass.category = "cspj";
     const examType = db.examTypes.find((item) => item.id === klass.category);
     if (!examType?.levelEnabled) klass.level = null;
   });
@@ -79,8 +81,7 @@ function seedExamTypes(db) {
   const defaults = [
     { id: "gesp", name: "GESP", levelEnabled: true, builtIn: true },
     { id: "cspj", name: "CSP-J 初赛", levelEnabled: false, builtIn: true },
-    { id: "csps", name: "CSP-S 初赛", levelEnabled: false, builtIn: true },
-    { id: "csp", name: "CSP-J/S 初赛", levelEnabled: false, builtIn: true }
+    { id: "csps", name: "CSP-S 初赛", levelEnabled: false, builtIn: true }
   ];
   defaults.forEach((item) => {
     const existing = db.examTypes.find((type) => type.id === item.id);
@@ -122,7 +123,10 @@ function saveDb(db) {
 }
 
 function loadPapers() {
-  return readJson(PAPERS_FILE, []);
+  return readJson(PAPERS_FILE, []).map((paper) => ({
+    ...paper,
+    category: paper.category === "csp" ? "cspj" : (paper.category || "gesp")
+  }));
 }
 
 function savePapers(papers) {
@@ -392,7 +396,8 @@ function audit(db, user, action, target) {
 }
 
 function validatePaper(input, db) {
-  const category = String(input.category || "gesp").trim();
+  const rawCategory = String(input.category || "gesp").trim();
+  const category = rawCategory === "csp" ? "cspj" : rawCategory;
   const examType = db.examTypes.find((item) => item.id === category);
   if (!examType) throw new Error("考试类型不存在。");
   const paper = {
@@ -762,6 +767,7 @@ async function api(req, res) {
     if (!/^[a-z][a-z0-9_-]{1,20}$/.test(id)) {
       return sendJson(res, 400, { message: "考试类型 ID 需字母开头，2-21 位英文、数字、下划线或短横线。" });
     }
+    if (id === "csp") return sendJson(res, 400, { message: "CSP-J/S 组合类型已停用，请分别使用 cspj 或 csps。" });
     if (!name) return sendJson(res, 400, { message: "考试类型名称不能为空。" });
     const existing = db.examTypes.find((item) => item.id === id);
     const examType = {

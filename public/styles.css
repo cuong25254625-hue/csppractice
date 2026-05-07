@@ -520,6 +520,8 @@ button {
 }
 
 .stem pre,
+.rich-text pre,
+.code-block,
 .sample pre,
 .result-output {
   margin: 8px 0;
@@ -531,6 +533,76 @@ button {
   font-family: Consolas, Monaco, monospace;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.rich-text {
+  color: var(--text);
+}
+
+.rich-text p {
+  margin: 0 0 10px;
+}
+
+.rich-text p:last-child,
+.rich-text ul:last-child,
+.rich-text ol:last-child,
+.rich-text table:last-child,
+.rich-text pre:last-child {
+  margin-bottom: 0;
+}
+
+.rich-text ul,
+.rich-text ol {
+  margin: 8px 0 10px 22px;
+  padding: 0;
+}
+
+.rich-text li {
+  margin: 4px 0;
+}
+
+.rich-text code:not(pre code) {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #eef2f7;
+  color: #0f172a;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 0.95em;
+}
+
+.code-block {
+  position: relative;
+  white-space: pre;
+  word-break: normal;
+}
+
+.code-block[data-lang]::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.rich-text table {
+  width: 100%;
+  margin: 10px 0;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.rich-text th,
+.rich-text td {
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.rich-text th {
+  background: #f8fafc;
+  font-weight: 700;
 }
 
 .options {

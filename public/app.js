@@ -34,6 +34,65 @@ function nl2br(value) {
   return escapeHtml(value).replace(/\n/g, "<br>");
 }
 
+function renderInlineMarkdown(value) {
+  let html = escapeHtml(value);
+  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  return html;
+}
+
+function renderMarkdown(value) {
+  const text = String(value || "").replace(/\r\n/g, "\n").trim();
+  if (!text) return "";
+
+  const html = [];
+  const fence = /```([a-zA-Z0-9+#-]*)\n([\s\S]*?)```/g;
+  let cursor = 0;
+  let match;
+  while ((match = fence.exec(text))) {
+    html.push(renderMarkdownBlocks(text.slice(cursor, match.index)));
+    const lang = match[1] ? ` data-lang="${escapeHtml(match[1])}"` : "";
+    html.push(`<pre class="code-block"${lang}><code>${escapeHtml(match[2].trimEnd())}</code></pre>`);
+    cursor = match.index + match[0].length;
+  }
+  html.push(renderMarkdownBlocks(text.slice(cursor)));
+  return html.join("");
+}
+
+function renderMarkdownBlocks(value) {
+  const blocks = String(value || "").split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
+  return blocks.map((block) => {
+    const lines = block.split("\n");
+    if (isMarkdownTable(lines)) return renderMarkdownTable(lines);
+    if (lines.every((line) => /^\s*[-*]\s+/.test(line))) {
+      return `<ul>${lines.map((line) => `<li>${renderInlineMarkdown(line.replace(/^\s*[-*]\s+/, ""))}</li>`).join("")}</ul>`;
+    }
+    if (lines.every((line) => /^\s*\d+[.)]\s+/.test(line))) {
+      return `<ol>${lines.map((line) => `<li>${renderInlineMarkdown(line.replace(/^\s*\d+[.)]\s+/, ""))}</li>`).join("")}</ol>`;
+    }
+    return `<p>${renderInlineMarkdown(lines.join("\n")).replace(/\n/g, "<br>")}</p>`;
+  }).join("");
+}
+
+function isMarkdownTable(lines) {
+  return lines.length >= 2 && lines[0].includes("|") && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[1]);
+}
+
+function renderMarkdownTable(lines) {
+  const rows = lines
+    .filter((_, index) => index !== 1)
+    .map((line) => line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim()));
+  const head = rows.shift() || [];
+  return `
+    <table>
+      <thead><tr>${head.map((cell) => `<th>${renderInlineMarkdown(cell)}</th>`).join("")}</tr></thead>
+      <tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${renderInlineMarkdown(cell)}</td>`).join("")}</tr>`).join("")}</tbody>
+    </table>
+  `;
+}
+
 function notify(message) {
   toast.textContent = message;
   toast.classList.add("show");
@@ -317,11 +376,11 @@ function renderQuestion(question, index) {
 function renderObjectiveQuestion(question) {
   const options = question.type === "judge"
     ? [{ label: "A. 正确", value: "true" }, { label: "B. 错误", value: "false" }]
-    : question.choices.map((choice, index) => ({ label: `${String.fromCharCode(65 + index)}. ${choice}`, value: String(index) }));
+    : question.choices.map((choice, index) => ({ prefix: String.fromCharCode(65 + index), label: choice, value: String(index) }));
   return `
-    <div class="stem">${nl2br(question.stem)}</div>
+    <div class="stem rich-text">${renderMarkdown(question.stem)}</div>
     <div class="options">
-      ${options.map((option) => `<label class="option" data-option="${question.id}:${option.value}"><input type="radio" name="${question.id}" value="${option.value}"><span>${escapeHtml(option.label)}</span></label>`).join("")}
+      ${options.map((option) => `<label class="option" data-option="${question.id}:${option.value}"><input type="radio" name="${question.id}" value="${option.value}"><span>${option.prefix ? `${option.prefix}. ${renderInlineMarkdown(option.label)}` : escapeHtml(option.label)}</span></label>`).join("")}
     </div>
     <div class="score-box" hidden data-explain="${question.id}"></div>
   `;
@@ -332,9 +391,9 @@ function renderProgramQuestion(question) {
     <div class="program-grid">
       <div>
         <h2>${escapeHtml(question.title)}</h2>
-        <p>${nl2br(question.statement)}</p>
-        <h3>输入格式</h3><p>${nl2br(question.input)}</p>
-        <h3>输出格式</h3><p>${nl2br(question.output)}</p>
+        <div class="rich-text">${renderMarkdown(question.statement)}</div>
+        <h3>输入格式</h3><div class="rich-text">${renderMarkdown(question.input)}</div>
+        <h3>输出格式</h3><div class="rich-text">${renderMarkdown(question.output)}</div>
         <h3>样例</h3>
         ${(question.samples || []).map((sample, index) => `<div class="sample"><strong>样例 #${index + 1}</strong><div>输入</div><pre>${escapeHtml(sample.input)}</pre><div>输出</div><pre>${escapeHtml(sample.output)}</pre></div>`).join("")}
       </div>
@@ -401,7 +460,7 @@ function applyObjectiveResult(details) {
     const explain = document.querySelector(`[data-explain="${detail.id}"]`);
     if (explain) {
       explain.hidden = false;
-      explain.innerHTML = `<div class="${detail.correct ? "status-ok" : "status-bad"}">${detail.correct ? "回答正确" : "回答错误"}</div><div>${escapeHtml(detail.explanation || "")}</div>`;
+      explain.innerHTML = `<div class="${detail.correct ? "status-ok" : "status-bad"}">${detail.correct ? "回答正确" : "回答错误"}</div><div class="rich-text">${renderMarkdown(detail.explanation || "")}</div>`;
     }
     document.querySelectorAll(`[data-option^="${detail.id}:"]`).forEach((option) => {
       const value = option.dataset.option.split(":")[1];
@@ -493,7 +552,7 @@ async function renderStudy() {
 }
 
 function renderWrongQuestion(item) {
-  return `<article class="wrong-item"><div class="question-head"><span>${escapeHtml(item.paperTitle)}</span><a class="secondary-btn" href="#/paper/${item.paperId}">重练</a></div><div>${nl2br(item.stem)}</div>${item.choices?.length ? `<ol class="choice-list">${item.choices.map((choice, index) => `<li>${String.fromCharCode(65 + index)}. ${escapeHtml(choice)}</li>`).join("")}</ol>` : ""}<div class="meta"><span>你的答案：${escapeHtml(formatAnswer(item, item.userAnswer))}</span><span>正确答案：${escapeHtml(formatAnswer(item, item.answer))}</span></div><div class="score-box">${escapeHtml(item.explanation || "暂无解析")}</div></article>`;
+  return `<article class="wrong-item"><div class="question-head"><span>${escapeHtml(item.paperTitle)}</span><a class="secondary-btn" href="#/paper/${item.paperId}">重练</a></div><div class="rich-text">${renderMarkdown(item.stem)}</div>${item.choices?.length ? `<ol class="choice-list">${item.choices.map((choice, index) => `<li>${String.fromCharCode(65 + index)}. ${renderInlineMarkdown(choice)}</li>`).join("")}</ol>` : ""}<div class="meta"><span>你的答案：${escapeHtml(formatAnswer(item, item.userAnswer))}</span><span>正确答案：${escapeHtml(formatAnswer(item, item.answer))}</span></div><div class="score-box rich-text">${renderMarkdown(item.explanation || "暂无解析")}</div></article>`;
 }
 
 function formatAnswer(item, value) {

@@ -13,10 +13,15 @@
         <nav class="nav">
           <a href="#/" data-link="home">试卷</a>
           <a href="#/dashboard" data-link="dashboard">记录</a>
-          <a href="#/study" data-link="study">学习</a>
           <a href="#/classes" data-link="classes">班级</a>
-          <a href="#/manage" data-link="manage" id="manageLink" hidden>管理</a>
-          <button class="ghost-btn" id="authButton" type="button">登录</button>
+          <div class="account-menu">
+            <button class="ghost-btn" id="authButton" type="button" aria-haspopup="menu" aria-expanded="false">登录</button>
+            <div class="account-dropdown" id="accountMenu" hidden>
+              <a href="#/study" id="accountStudyLink">个人学习</a>
+              <a href="#/manage" id="accountManageLink" hidden>管理后台</a>
+              <button type="button" id="logoutButton">退出登录</button>
+            </div>
+          </div>
         </nav>
       </div>
     </header>
@@ -47,6 +52,30 @@
         <div class="auth-actions">
           <button class="primary-btn" type="button" id="submitAuth">登录</button>
           <button class="link-btn" type="button" id="toggleAuth">创建账号</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="code-dialog" id="codeInsertDialog">
+      <form class="code-insert-box" method="dialog">
+        <div class="dialog-head">
+          <div>
+            <h2>插入代码</h2>
+            <p>粘贴完整代码，确认预览后插入到当前题目描述。</p>
+          </div>
+          <button class="icon-btn" type="button" id="closeCodeInsert" aria-label="关闭">×</button>
+        </div>
+        <label class="code-lang-field">
+          <span>语言</span>
+          <input id="codeLanguageInput" value="cpp" placeholder="cpp">
+        </label>
+        <div class="code-insert-grid">
+          <textarea id="codeSnippetInput" spellcheck="false" placeholder="在这里粘贴代码"></textarea>
+          <div class="code-preview rich-text" id="codeSnippetPreview"></div>
+        </div>
+        <div class="auth-actions">
+          <button class="primary-btn" type="button" id="insertCodeSnippet">插入到题目</button>
+          <button class="secondary-btn" type="button" id="cancelCodeInsert">取消</button>
         </div>
       </form>
     </dialog>

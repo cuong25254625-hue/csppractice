@@ -85,6 +85,41 @@ button {
   gap: 8px;
 }
 
+.account-menu {
+  position: relative;
+}
+
+.account-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  min-width: 168px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.account-dropdown a,
+.account-dropdown button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.account-dropdown a:hover,
+.account-dropdown button:hover {
+  background: #ecfdf5;
+  color: var(--brand);
+}
+
 .nav a,
 .ghost-btn,
 .link-btn {
@@ -973,7 +1008,23 @@ button {
   background: rgba(15, 23, 42, 0.42);
 }
 
+.code-dialog {
+  width: min(980px, calc(100% - 28px));
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  box-shadow: var(--shadow);
+}
+
+.code-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.42);
+}
+
 .auth-box {
+  padding: 18px;
+}
+
+.code-insert-box {
   padding: 18px;
 }
 
@@ -1002,6 +1053,50 @@ button {
   border-radius: 6px;
   padding: 0 11px;
   color: var(--text);
+}
+
+.code-lang-field {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 160px);
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--muted);
+}
+
+.code-lang-field input {
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 10px;
+}
+
+.code-insert-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.code-insert-grid textarea,
+.code-preview {
+  min-height: 420px;
+  max-height: 62vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.code-insert-grid textarea {
+  resize: vertical;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.code-preview {
+  background: #f8fafc;
 }
 
 .auth-actions {
@@ -1063,6 +1158,16 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .code-insert-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .code-insert-grid textarea,
+  .code-preview {
+    min-height: 260px;
+    max-height: 42vh;
+  }
+
   .builder-meta,
   .choice-editor {
     grid-template-columns: 1fr;
@@ -1093,6 +1198,10 @@ button {
   .nav {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .account-dropdown {
+    right: 0;
   }
 
   .paper-title,

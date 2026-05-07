@@ -20,7 +20,17 @@ const submitAuth = document.querySelector("#submitAuth");
 const toggleAuth = document.querySelector("#toggleAuth");
 const closeAuth = document.querySelector("#closeAuth");
 const toast = document.querySelector("#toast");
-const manageLink = document.querySelector("#manageLink");
+const accountMenu = document.querySelector("#accountMenu");
+const accountManageLink = document.querySelector("#accountManageLink");
+const logoutButton = document.querySelector("#logoutButton");
+const codeInsertDialog = document.querySelector("#codeInsertDialog");
+const codeLanguageInput = document.querySelector("#codeLanguageInput");
+const codeSnippetInput = document.querySelector("#codeSnippetInput");
+const codeSnippetPreview = document.querySelector("#codeSnippetPreview");
+const insertCodeSnippet = document.querySelector("#insertCodeSnippet");
+const closeCodeInsert = document.querySelector("#closeCodeInsert");
+const cancelCodeInsert = document.querySelector("#cancelCodeInsert");
+let pendingMarkdownTextarea = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -51,13 +61,13 @@ function renderMarkdown(value) {
   if (!text) return "";
 
   const html = [];
-  const fence = /```([a-zA-Z0-9+#-]*)\n([\s\S]*?)```/g;
+  const fence = /(`{3,})([a-zA-Z0-9+#-]*)\n([\s\S]*?)\1/g;
   let cursor = 0;
   let match;
   while ((match = fence.exec(text))) {
     html.push(renderMarkdownBlocks(text.slice(cursor, match.index)));
-    const lang = match[1] ? ` data-lang="${escapeHtml(match[1])}"` : "";
-    html.push(`<pre class="code-block"${lang}><code>${escapeHtml(match[2].trimEnd())}</code></pre>`);
+    const lang = match[2] ? ` data-lang="${escapeHtml(match[2])}"` : "";
+    html.push(`<pre class="code-block"${lang}><code>${escapeHtml(match[3].trimEnd())}</code></pre>`);
     cursor = match.index + match[0].length;
   }
   html.push(renderMarkdownBlocks(text.slice(cursor)));
@@ -362,7 +372,7 @@ function renderPaper(paperId) {
             ${paper.questions.map((question, index) => `<a href="#q-${question.id}" data-card="${question.id}">${index + 1}</a>`).join("")}
           </div>
           <div class="submit-row">
-            <button class="primary-btn" type="button" id="submitObjective" ${objectiveQuestions.length ? "" : "disabled"}>提交客观题</button>
+            <button class="primary-btn" type="button" id="submitObjective" ${objectiveQuestions.length ? "" : "disabled"}>提交</button>
           </div>
           <div class="score-box" id="scoreBox">
             <div class="muted">单选和判断题自动判分；编程题逐题提交。</div>
@@ -480,7 +490,7 @@ async function submitObjective(paperId) {
     document.querySelector("#scoreBox").innerHTML = `
       <div class="score-summary ${scoreLevel(data.score, data.fullScore)}">
         <div>
-          <span>客观题成绩</span>
+          <span>成绩</span>
           <strong>${percent(data.score, data.fullScore)}<small>%</small></strong>
         </div>
         <p>${data.score} / ${data.fullScore} 分</p>
@@ -493,7 +503,7 @@ async function submitObjective(paperId) {
       <div class="muted">已保存到练习记录。</div>
     `;
     applyObjectiveResult(data.details);
-    notify("客观题判分完成。");
+    notify("提交完成。");
   } catch (error) {
     notify(error.message);
   }
@@ -863,7 +873,7 @@ function insertMarkdownSnippet(button) {
   if (!textarea) return;
   const type = button.dataset.insertMarkdown;
   if (type === "code") {
-    insertAtCursor(textarea, "\n```cpp\nint s = 0;\ncout << s;\n```\n");
+    openCodeInsertDialog(textarea);
   } else if (type === "formula") {
     insertAtCursor(textarea, "\n$$\na^2 + b^2 = c^2\n$$\n");
   } else if (type === "image") {
@@ -871,6 +881,40 @@ function insertMarkdownSnippet(button) {
     if (!url) return;
     insertAtCursor(textarea, `\n![图片说明](${url.trim()})\n`);
   }
+}
+
+function openCodeInsertDialog(textarea) {
+  pendingMarkdownTextarea = textarea;
+  const selected = textarea.value.slice(textarea.selectionStart || 0, textarea.selectionEnd || 0);
+  codeSnippetInput.value = selected || "";
+  codeLanguageInput.value = "cpp";
+  updateCodeSnippetPreview();
+  codeInsertDialog.showModal();
+  codeSnippetInput.focus();
+}
+
+function codeFenceFor(value) {
+  return String(value || "").includes("```") ? "````" : "```";
+}
+
+function updateCodeSnippetPreview() {
+  const code = codeSnippetInput.value;
+  const language = codeLanguageInput.value.trim() || "cpp";
+  const fence = codeFenceFor(code);
+  codeSnippetPreview.innerHTML = code.trim()
+    ? renderMarkdown(`${fence}${language}\n${code}\n${fence}`)
+    : `<div class="muted">代码预览会显示在这里。</div>`;
+}
+
+function confirmCodeInsert() {
+  if (!pendingMarkdownTextarea) return;
+  const code = codeSnippetInput.value;
+  if (!code.trim()) return notify("请先粘贴代码。");
+  const language = codeLanguageInput.value.trim() || "cpp";
+  const fence = codeFenceFor(code);
+  insertAtCursor(pendingMarkdownTextarea, `\n${fence}${language}\n${code.replace(/\s+$/g, "")}\n${fence}\n`);
+  codeInsertDialog.close();
+  pendingMarkdownTextarea = null;
 }
 
 function addBuilderQuestion(type) {
@@ -1087,6 +1131,7 @@ async function createUser() {
 }
 
 function openAuth() {
+  closeAccountMenu();
   state.authMode = "login";
   renderAuthMode();
   authDialog.showModal();
@@ -1119,6 +1164,7 @@ async function handleAuth() {
 }
 
 async function logout() {
+  closeAccountMenu();
   await api("/api/logout", { method: "POST" });
   state.user = null;
   state.attempts = [];
@@ -1128,9 +1174,24 @@ async function logout() {
   notify("已退出登录。");
 }
 
+function closeAccountMenu() {
+  accountMenu.hidden = true;
+  authButton.setAttribute("aria-expanded", "false");
+}
+
+function toggleAccountMenu() {
+  if (!state.user) {
+    openAuth();
+    return;
+  }
+  accountMenu.hidden = !accountMenu.hidden;
+  authButton.setAttribute("aria-expanded", String(!accountMenu.hidden));
+}
+
 function updateAuthButton() {
-  manageLink.hidden = !isTeacher();
-  authButton.textContent = state.user ? `退出 ${state.user.username}` : "登录";
+  accountManageLink.hidden = !isTeacher();
+  authButton.textContent = state.user ? state.user.username : "登录";
+  if (!state.user) closeAccountMenu();
 }
 
 async function refreshMe() {
@@ -1161,9 +1222,13 @@ async function init() {
   route();
 }
 
-authButton.addEventListener("click", () => {
-  if (state.user) logout();
-  else openAuth();
+authButton.addEventListener("click", toggleAccountMenu);
+logoutButton.addEventListener("click", logout);
+accountMenu.addEventListener("click", (event) => {
+  if (event.target.closest("a")) closeAccountMenu();
+});
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".account-menu")) closeAccountMenu();
 });
 closeAuth.addEventListener("click", () => authDialog.close());
 toggleAuth.addEventListener("click", () => {
@@ -1174,6 +1239,11 @@ submitAuth.addEventListener("click", handleAuth);
 authPassword.addEventListener("keydown", (event) => {
   if (event.key === "Enter") handleAuth();
 });
+codeSnippetInput.addEventListener("input", updateCodeSnippetPreview);
+codeLanguageInput.addEventListener("input", updateCodeSnippetPreview);
+insertCodeSnippet.addEventListener("click", confirmCodeInsert);
+closeCodeInsert.addEventListener("click", () => codeInsertDialog.close());
+cancelCodeInsert.addEventListener("click", () => codeInsertDialog.close());
 window.addEventListener("hashchange", route);
 
 init();

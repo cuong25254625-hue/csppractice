@@ -1,8 +1,8 @@
 {
-  "name": "gesp-practice-platform",
+  "name": "preliminary-practice-platform",
   "version": "1.0.0",
   "private": true,
-  "description": "A local GESP practice platform with account, papers, objective grading and C++ judging.",
+  "description": "A local GESP and CSP-J/S preliminary practice platform with accounts, papers, objective grading and C++ judging.",
   "scripts": {
     "start": "node server.js"
   },

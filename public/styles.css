@@ -73,13 +73,9 @@ button {
   min-width: 0;
 }
 
-.brand img {
-  width: 166px;
-  height: 41px;
-  object-fit: contain;
-}
-
-.brand span {
+.text-brand {
+  font-size: 22px;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 
@@ -799,12 +795,8 @@ button {
     padding: 12px 0;
   }
 
-  .brand img {
-    width: 140px;
-  }
-
-  .brand span {
-    display: none;
+  .text-brand {
+    font-size: 20px;
   }
 
   .nav {

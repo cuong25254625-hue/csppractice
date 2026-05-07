@@ -360,6 +360,7 @@ function validatePaper(input) {
   const paper = {
     id: String(input.id || "").trim() || slugify(input.title || "paper"),
     title: String(input.title || "").trim(),
+    category: String(input.category || "gesp").trim(),
     level: Number(input.level || 1),
     language: String(input.language || "C++").trim(),
     year: Number(input.year || new Date().getFullYear()),

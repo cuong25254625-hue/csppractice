@@ -4,7 +4,7 @@ const state = {
   attempts: [],
   classes: [],
   authMode: "login",
-  filters: { level: "all", keyword: "" },
+  filters: { category: "all", level: "all", keyword: "" },
   manage: { papers: [], overview: null, users: [], editPaper: null }
 };
 
@@ -65,6 +65,10 @@ function roleName(role) {
   return { admin: "管理员", teacher: "教师", student: "学生" }[role] || role;
 }
 
+function categoryName(category) {
+  return { gesp: "GESP", cspj: "CSP-J 初赛", csps: "CSP-S 初赛", csp: "CSP-J/S 初赛" }[category] || "综合";
+}
+
 function setActiveNav(hash) {
   document.querySelectorAll("[data-link]").forEach((link) => link.classList.remove("active"));
   const name = hash.startsWith("#/manage") ? "manage" : hash.startsWith("#/classes") ? "classes" : hash === "#/study" ? "study" : hash === "#/dashboard" ? "dashboard" : "home";
@@ -93,10 +97,11 @@ function paperStats(paper) {
 
 function filteredPapers() {
   return state.papers.filter((paper) => {
+    const byCategory = state.filters.category === "all" || (paper.category || "gesp") === state.filters.category;
     const byLevel = state.filters.level === "all" || String(paper.level) === state.filters.level;
-    const text = `${paper.title} ${paper.summary} ${paper.language}`.toLowerCase();
+    const text = `${paper.title} ${paper.summary} ${paper.language} ${categoryName(paper.category)}`.toLowerCase();
     const byKeyword = !state.filters.keyword || text.includes(state.filters.keyword.toLowerCase());
-    return byLevel && byKeyword;
+    return byCategory && byLevel && byKeyword;
   });
 }
 
@@ -110,18 +115,25 @@ function renderHome() {
       <section>
         <div class="panel intro">
           <div class="panel-head">
-            <h1>GESP 练习中心</h1>
+            <h1>初赛考级练习平台</h1>
             <div class="filters">
+              <select id="categoryFilter" aria-label="考试类型筛选">
+                <option value="all">全部类型</option>
+                <option value="gesp">GESP</option>
+                <option value="cspj">CSP-J 初赛</option>
+                <option value="csps">CSP-S 初赛</option>
+                <option value="csp">CSP-J/S 初赛</option>
+              </select>
               <select id="levelFilter" aria-label="等级筛选">
                 <option value="all">全部等级</option>
                 ${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}">${index + 1} 级</option>`).join("")}
               </select>
-              <input id="keywordFilter" placeholder="搜索试卷或专题" value="${escapeHtml(state.filters.keyword)}">
+              <input id="keywordFilter" placeholder="搜索试卷、专题或关键词" value="${escapeHtml(state.filters.keyword)}">
             </div>
           </div>
           <div class="panel-body">
-            <p>平台已经支持多角色使用：学生练习和查看记录，教师维护题库、创建班级、发布作业，管理员维护用户。</p>
-            <p>编程题会调用本机 g++ 评测；正式上线前建议迁移到独立评测沙箱和数据库服务。</p>
+            <p>平台面向 GESP 考级与 CSP-J/S 初赛练习，学生可以按类型和等级刷题，教师可以建班、布置作业、维护题库。</p>
+            <p>客观题自动判分，编程题支持 C++ 编译评测；学习中心会汇总作业、错题和等级进度。</p>
           </div>
         </div>
 
@@ -142,8 +154,8 @@ function renderHome() {
           <div class="panel-body">
             ${
               state.user
-                ? `<p><strong>${escapeHtml(state.user.username)}</strong> · ${roleName(state.user.role)}</p><p class="muted">最近记录：${state.attempts.length} 条</p><div class="submit-row"><a class="secondary-btn" href="#/dashboard">练习记录</a>${isTeacher() ? `<a class="primary-btn" href="#/manage">进入管理台</a>` : ""}</div>`
-                : `<p class="muted">登录后可以保存练习记录、加入班级和提交代码。</p><button class="primary-btn" type="button" data-open-auth>登　录</button>`
+                ? `<p><strong>${escapeHtml(state.user.username)}</strong> · ${roleName(state.user.role)}</p><p class="muted">最近记录：${state.attempts.length} 条</p><div class="submit-row"><a class="secondary-btn" href="#/study">学习中心</a>${isTeacher() ? `<a class="primary-btn" href="#/manage">管理台</a>` : ""}</div>`
+                : `<p class="muted">登录后可以保存练习记录、加入班级和查看错题。</p><button class="primary-btn" type="button" data-open-auth>登　录</button>`
             }
           </div>
         </div>
@@ -152,21 +164,16 @@ function renderHome() {
           <div class="panel-head"><h2>最新试卷</h2></div>
           <div class="panel-body">
             <ul class="mini-list">
-              ${latest.map((paper) => `<li><a href="#/paper/${paper.id}">${escapeHtml(paper.title)}</a><span class="muted">${paper.views}</span></li>`).join("")}
+              ${latest.map((paper) => `<li><a href="#/paper/${paper.id}">${escapeHtml(paper.title)}</a><span class="muted">${paper.views || 0}</span></li>`).join("")}
             </ul>
           </div>
         </div>
 
         <div class="panel">
-          <div class="panel-head"><h2>考生榜</h2></div>
+          <div class="panel-head"><h2>练习榜</h2></div>
           <div class="panel-body">
             <ul class="mini-list">
-              ${ranks.map((rank) => `
-                <li>
-                  <span class="rank-user"><span class="avatar">${escapeHtml(rank.name.slice(0, 1).toUpperCase())}</span>${escapeHtml(rank.name)}</span>
-                  <span class="muted">${rank.count} 次</span>
-                </li>
-              `).join("")}
+              ${ranks.map((rank) => `<li><span class="rank-user"><span class="avatar">${escapeHtml(rank.name.slice(0, 1).toUpperCase())}</span>${escapeHtml(rank.name)}</span><span class="muted">${rank.count} 次</span></li>`).join("")}
             </ul>
           </div>
         </div>
@@ -174,7 +181,12 @@ function renderHome() {
     </div>
   `;
 
+  document.querySelector("#categoryFilter").value = state.filters.category;
   document.querySelector("#levelFilter").value = state.filters.level;
+  document.querySelector("#categoryFilter").addEventListener("change", (event) => {
+    state.filters.category = event.target.value;
+    renderHome();
+  });
   document.querySelector("#levelFilter").addEventListener("change", (event) => {
     state.filters.level = event.target.value;
     renderHome();
@@ -188,18 +200,19 @@ function renderHome() {
 
 function renderPaperItem(paper) {
   const stats = paperStats(paper);
+  const category = paper.category || "gesp";
   return `
     <li class="paper-item">
-      <span class="paper-icon">${paper.level}级</span>
+      <span class="paper-icon">${category === "gesp" ? `${paper.level}级` : "初赛"}</span>
       <div>
         <h3><a href="#/paper/${paper.id}">${escapeHtml(paper.title)}</a></h3>
         <div class="meta">
-          <span>${escapeHtml(paper.language)}</span>
-          <span>${paper.year}-${paper.month}</span>
+          <span>${categoryName(category)}</span>
+          <span>${escapeHtml(paper.language || "C++")}</span>
+          <span>${paper.year || ""}-${paper.month || ""}</span>
           <span>客观题 ${stats.objective}</span>
           <span>编程题 ${stats.program}</span>
-          <span>参与 ${paper.participants}</span>
-          <span>人气 ${paper.views}</span>
+          <span>满分 ${stats.fullScore}</span>
         </div>
       </div>
       <a class="primary-btn" href="#/paper/${paper.id}">开始练习</a>
@@ -212,10 +225,9 @@ function rankUsers() {
   state.attempts.forEach((attempt) => counts.set(attempt.username, (counts.get(attempt.username) || 0) + 1));
   const localRanks = [...counts.entries()].map(([name, count]) => ({ name, count }));
   const fallback = [
-    { name: "yangxinyu", count: 94 },
-    { name: "lzp0701", count: 89 },
-    { name: "kam30503", count: 65 },
-    { name: "momowang", count: 58 }
+    { name: "demo", count: 8 },
+    { name: "student01", count: 6 },
+    { name: "student02", count: 4 }
   ];
   return [...localRanks, ...fallback].sort((a, b) => b.count - a.count).slice(0, 8);
 }
@@ -242,21 +254,18 @@ function renderPaper(paperId) {
             <div>
               <h1>${escapeHtml(paper.title)}</h1>
               <div class="meta" style="margin-top: 8px;">
-                <span>${paper.level} 级</span>
-                <span>${escapeHtml(paper.language)}</span>
+                <span>${categoryName(paper.category || "gesp")}</span>
+                <span>${escapeHtml(paper.language || "C++")}</span>
                 <span>满分 ${stats.fullScore}</span>
-                <span>参与 ${paper.participants}</span>
+                <span>客观题 ${stats.objective}</span>
+                <span>编程题 ${stats.program}</span>
               </div>
             </div>
             <a class="secondary-btn" href="#/">返回列表</a>
           </div>
         </div>
 
-        ${
-          paper.questions.length
-            ? groups.map(([title, questions]) => renderQuestionGroup(title, questions, paper.id)).join("")
-            : `<div class="panel empty" style="margin-top: 18px;">这套试卷还没有题目。教师可在管理台导入题目。</div>`
-        }
+        ${paper.questions.length ? groups.map(([title, questions]) => renderQuestionGroup(title, questions)).join("") : `<div class="panel empty" style="margin-top: 18px;">这套试卷还没有题目。</div>`}
       </section>
 
       <aside class="panel answer-card">
@@ -281,15 +290,13 @@ function renderPaper(paperId) {
     element.addEventListener("change", updateAnswerCard);
   });
   document.querySelector("#submitObjective")?.addEventListener("click", () => submitObjective(paper.id));
-  document.querySelectorAll("[data-run-code]").forEach((button) => {
-    button.addEventListener("click", () => submitCode(paper.id, button.dataset.runCode));
-  });
+  document.querySelectorAll("[data-run-code]").forEach((button) => button.addEventListener("click", () => submitCode(paper.id, button.dataset.runCode)));
   updateAnswerCard();
 }
 
-function renderQuestionGroup(title, questions, paperId) {
+function renderQuestionGroup(title, questions) {
   if (!questions.length) return "";
-  return `<div class="section-label">${title}</div>${questions.map((question, index) => renderQuestion(question, index, paperId)).join("")}`;
+  return `<div class="section-label">${title}</div>${questions.map((question, index) => renderQuestion(question, index)).join("")}`;
 }
 
 function renderQuestion(question, index) {
@@ -309,21 +316,12 @@ function renderQuestion(question, index) {
 
 function renderObjectiveQuestion(question) {
   const options = question.type === "judge"
-    ? [
-        { label: "A. 正确", value: "true" },
-        { label: "B. 错误", value: "false" }
-      ]
+    ? [{ label: "A. 正确", value: "true" }, { label: "B. 错误", value: "false" }]
     : question.choices.map((choice, index) => ({ label: `${String.fromCharCode(65 + index)}. ${choice}`, value: String(index) }));
-
   return `
     <div class="stem">${nl2br(question.stem)}</div>
     <div class="options">
-      ${options.map((option) => `
-        <label class="option" data-option="${question.id}:${option.value}">
-          <input type="radio" name="${question.id}" value="${option.value}">
-          <span>${escapeHtml(option.label)}</span>
-        </label>
-      `).join("")}
+      ${options.map((option) => `<label class="option" data-option="${question.id}:${option.value}"><input type="radio" name="${question.id}" value="${option.value}"><span>${escapeHtml(option.label)}</span></label>`).join("")}
     </div>
     <div class="score-box" hidden data-explain="${question.id}"></div>
   `;
@@ -335,29 +333,15 @@ function renderProgramQuestion(question) {
       <div>
         <h2>${escapeHtml(question.title)}</h2>
         <p>${nl2br(question.statement)}</p>
-        <h3>输入格式</h3>
-        <p>${nl2br(question.input)}</p>
-        <h3>输出格式</h3>
-        <p>${nl2br(question.output)}</p>
+        <h3>输入格式</h3><p>${nl2br(question.input)}</p>
+        <h3>输出格式</h3><p>${nl2br(question.output)}</p>
         <h3>样例</h3>
-        ${question.samples.map((sample, index) => `
-          <div class="sample">
-            <strong>样例 #${index + 1}</strong>
-            <div>输入</div>
-            <pre>${escapeHtml(sample.input)}</pre>
-            <div>输出</div>
-            <pre>${escapeHtml(sample.output)}</pre>
-          </div>
-        `).join("")}
+        ${(question.samples || []).map((sample, index) => `<div class="sample"><strong>样例 #${index + 1}</strong><div>输入</div><pre>${escapeHtml(sample.input)}</pre><div>输出</div><pre>${escapeHtml(sample.output)}</pre></div>`).join("")}
       </div>
       <div>
         <textarea class="code-editor" id="code-${question.id}" spellcheck="false">${escapeHtml(defaultCode())}</textarea>
-        <div class="submit-row">
-          <button class="primary-btn" type="button" data-run-code="${question.id}">提交代码</button>
-        </div>
-        <div class="score-box" id="result-${question.id}">
-          <div class="muted">提交后会编译 C++，并运行样例与测试点。</div>
-        </div>
+        <div class="submit-row"><button class="primary-btn" type="button" data-run-code="${question.id}">提交代码</button></div>
+        <div class="score-box" id="result-${question.id}"><div class="muted">提交后会编译 C++，并运行样例与测试点。</div></div>
       </div>
     </div>
   `;
@@ -401,7 +385,6 @@ async function submitObjective(paperId) {
     const checked = document.querySelector(`input[name="${item.dataset.question}"]:checked`);
     if (checked) answers[item.dataset.question] = checked.value;
   });
-
   try {
     const data = await api("/api/submit-objective", { method: "POST", body: { paperId, answers } });
     state.attempts.unshift(data.attempt);
@@ -452,15 +435,7 @@ function renderJudgeResult(result) {
     return `<div class="status-bad">${escapeHtml(result.message)}</div>${result.status === "compile_error" ? `<pre class="result-output">${escapeHtml(result.message)}</pre>` : ""}`;
   }
   const cls = result.status === "accepted" ? "status-ok" : "status-bad";
-  return `
-    <div class="${cls}">${escapeHtml(result.message)} ${result.passed}/${result.total}</div>
-    ${(result.results || []).map((item) => `
-      <div class="sample">
-        <strong>${item.sample ? "样例" : "测试点"} #${item.index}：${item.passed ? "通过" : "未通过"}</strong>
-        ${item.passed ? "" : `<div>期望输出</div><pre>${escapeHtml(item.expected)}</pre><div>实际输出</div><pre>${escapeHtml(item.actual || item.stderr || "")}</pre>`}
-      </div>
-    `).join("")}
-  `;
+  return `<div class="${cls}">${escapeHtml(result.message)} ${result.passed}/${result.total}</div>${(result.results || []).map((item) => `<div class="sample"><strong>${item.sample ? "样例" : "测试点"} #${item.index}：${item.passed ? "通过" : "未通过"}</strong>${item.passed ? "" : `<div>期望输出</div><pre>${escapeHtml(item.expected)}</pre><div>实际输出</div><pre>${escapeHtml(item.actual || item.stderr || "")}</pre>`}</div>`).join("")}`;
 }
 
 async function renderStudy() {
@@ -469,27 +444,17 @@ async function renderStudy() {
     document.querySelector("[data-open-auth]")?.addEventListener("click", openAuth);
     return;
   }
-
-  let summary = {
-    totals: { attempts: 0, assignments: 0, pendingAssignments: 0, wrongQuestions: 0 },
-    assignments: [],
-    wrongQuestions: [],
-    progress: []
-  };
+  let summary = { totals: { attempts: 0, assignments: 0, pendingAssignments: 0, wrongQuestions: 0 }, assignments: [], wrongQuestions: [], progress: [] };
   try {
     summary = await api("/api/student/summary");
   } catch (error) {
     notify(error.message);
   }
-
   app.innerHTML = `
     <div class="grid">
       <section>
         <div class="panel">
-          <div class="panel-head">
-            <h1>学习中心</h1>
-            <span class="muted">${escapeHtml(state.user.username)}</span>
-          </div>
+          <div class="panel-head"><h1>学习中心</h1><span class="muted">${escapeHtml(state.user.username)}</span></div>
           <div class="panel-body stat-grid">
             ${statCard("提交次数", summary.totals.attempts)}
             ${statCard("班级作业", summary.totals.assignments)}
@@ -497,36 +462,17 @@ async function renderStudy() {
             ${statCard("错题", summary.totals.wrongQuestions)}
           </div>
         </div>
-
         <div class="panel" style="margin-top: 18px;">
           <div class="panel-head"><h2>待完成作业</h2></div>
           <ul class="paper-list">
-            ${summary.assignments.filter((item) => !item.done).map((item) => `
-              <li class="paper-item">
-                <span class="paper-icon">作业</span>
-                <div>
-                  <h3><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a></h3>
-                  <div class="meta">
-                    <span>${escapeHtml(item.className)}</span>
-                    <span>截止 ${escapeHtml(item.dueAt || "长期")}</span>
-                    <span>客观题 ${item.bestObjective ? `${item.bestObjective.score}/${item.bestObjective.fullScore}` : "未提交"}</span>
-                    <span>编程题 ${item.acceptedPrograms}/${item.programTotal}</span>
-                  </div>
-                </div>
-                <a class="primary-btn" href="#/paper/${item.paperId}">去完成</a>
-              </li>
-            `).join("") || `<li class="empty">暂无待完成作业</li>`}
+            ${summary.assignments.filter((item) => !item.done).map((item) => `<li class="paper-item"><span class="paper-icon">作业</span><div><h3><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a></h3><div class="meta"><span>${escapeHtml(item.className)}</span><span>截止 ${escapeHtml(item.dueAt || "长期")}</span><span>客观题 ${item.bestObjective ? `${item.bestObjective.score}/${item.bestObjective.fullScore}` : "未提交"}</span><span>编程题 ${item.acceptedPrograms}/${item.programTotal}</span></div></div><a class="primary-btn" href="#/paper/${item.paperId}">去完成</a></li>`).join("") || `<li class="empty">暂无待完成作业</li>`}
           </ul>
         </div>
-
         <div class="panel" style="margin-top: 18px;">
           <div class="panel-head"><h2>错题本</h2><span class="muted">${summary.wrongQuestions.length} 题</span></div>
-          <div class="panel-body wrong-list">
-            ${summary.wrongQuestions.map((item) => renderWrongQuestion(item)).join("") || `<div class="empty">还没有错题，保持住。</div>`}
-          </div>
+          <div class="panel-body wrong-list">${summary.wrongQuestions.map((item) => renderWrongQuestion(item)).join("") || `<div class="empty">还没有错题，保持住。</div>`}</div>
         </div>
       </section>
-
       <aside class="side-stack">
         <div class="panel">
           <div class="panel-head"><h2>等级进度</h2></div>
@@ -537,14 +483,9 @@ async function renderStudy() {
             }).join("")}
           </div>
         </div>
-
         <div class="panel">
           <div class="panel-head"><h2>已完成作业</h2></div>
-          <div class="panel-body">
-            <ul class="mini-list">
-              ${summary.assignments.filter((item) => item.done).slice(0, 8).map((item) => `<li><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a><span class="status-ok">完成</span></li>`).join("") || `<li class="muted">暂无</li>`}
-            </ul>
-          </div>
+          <div class="panel-body"><ul class="mini-list">${summary.assignments.filter((item) => item.done).slice(0, 8).map((item) => `<li><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a><span class="status-ok">完成</span></li>`).join("") || `<li class="muted">暂无</li>`}</ul></div>
         </div>
       </aside>
     </div>
@@ -552,18 +493,7 @@ async function renderStudy() {
 }
 
 function renderWrongQuestion(item) {
-  return `
-    <article class="wrong-item">
-      <div class="question-head">
-        <span>${escapeHtml(item.paperTitle)}</span>
-        <a class="secondary-btn" href="#/paper/${item.paperId}">重练</a>
-      </div>
-      <div>${nl2br(item.stem)}</div>
-      ${item.choices?.length ? `<ol class="choice-list">${item.choices.map((choice, index) => `<li>${String.fromCharCode(65 + index)}. ${escapeHtml(choice)}</li>`).join("")}</ol>` : ""}
-      <div class="meta"><span>你的答案：${escapeHtml(formatAnswer(item, item.userAnswer))}</span><span>正确答案：${escapeHtml(formatAnswer(item, item.answer))}</span></div>
-      <div class="score-box">${escapeHtml(item.explanation || "暂无解析")}</div>
-    </article>
-  `;
+  return `<article class="wrong-item"><div class="question-head"><span>${escapeHtml(item.paperTitle)}</span><a class="secondary-btn" href="#/paper/${item.paperId}">重练</a></div><div>${nl2br(item.stem)}</div>${item.choices?.length ? `<ol class="choice-list">${item.choices.map((choice, index) => `<li>${String.fromCharCode(65 + index)}. ${escapeHtml(choice)}</li>`).join("")}</ol>` : ""}<div class="meta"><span>你的答案：${escapeHtml(formatAnswer(item, item.userAnswer))}</span><span>正确答案：${escapeHtml(formatAnswer(item, item.answer))}</span></div><div class="score-box">${escapeHtml(item.explanation || "暂无解析")}</div></article>`;
 }
 
 function formatAnswer(item, value) {
@@ -578,30 +508,13 @@ function renderDashboard() {
     document.querySelector("[data-open-auth]")?.addEventListener("click", openAuth);
     return;
   }
-
   app.innerHTML = `
     <div class="grid">
       <section class="panel">
-        <div class="panel-head">
-          <h1>练习记录</h1>
-          <span class="muted">${escapeHtml(state.user.username)} · ${roleName(state.user.role)}</span>
-        </div>
-        ${
-          state.attempts.length
-            ? `<div class="panel-body"><table class="history-table"><thead><tr><th>时间</th><th>试卷</th><th>类型</th><th>结果</th></tr></thead><tbody>${state.attempts.map(renderAttemptRow).join("")}</tbody></table></div>`
-            : `<div class="empty">还没有提交记录</div>`
-        }
+        <div class="panel-head"><h1>练习记录</h1><span class="muted">${escapeHtml(state.user.username)} · ${roleName(state.user.role)}</span></div>
+        ${state.attempts.length ? `<div class="panel-body"><table class="history-table"><thead><tr><th>时间</th><th>试卷</th><th>类型</th><th>结果</th></tr></thead><tbody>${state.attempts.map(renderAttemptRow).join("")}</tbody></table></div>` : `<div class="empty">还没有提交记录</div>`}
       </section>
-      <aside class="side-stack">
-        <div class="panel">
-          <div class="panel-head"><h2>学习进度</h2></div>
-          <div class="panel-body">
-            <p class="muted">提交次数：${state.attempts.length}</p>
-            <p class="muted">已加入班级：${state.classes.length}</p>
-            <a class="secondary-btn" href="#/classes">查看班级</a>
-          </div>
-        </div>
-      </aside>
+      <aside class="side-stack"><div class="panel"><div class="panel-head"><h2>学习进度</h2></div><div class="panel-body"><p class="muted">提交次数：${state.attempts.length}</p><p class="muted">已加入班级：${state.classes.length}</p><a class="secondary-btn" href="#/study">进入学习中心</a></div></div></aside>
     </div>
   `;
 }
@@ -619,7 +532,6 @@ async function renderClasses() {
     document.querySelector("[data-open-auth]")?.addEventListener("click", openAuth);
     return;
   }
-
   let data = { classes: state.classes, assignments: [] };
   try {
     data = await api("/api/classes");
@@ -627,45 +539,18 @@ async function renderClasses() {
   } catch (error) {
     notify(error.message);
   }
-
   app.innerHTML = `
     <div class="grid">
       <section class="panel">
-        <div class="panel-head">
-          <h1>我的班级</h1>
-          <span class="muted">${state.classes.length} 个班级</span>
-        </div>
+        <div class="panel-head"><h1>我的班级</h1><span class="muted">${state.classes.length} 个班级</span></div>
         <div class="panel-body">
-          <div class="form-grid">
-            <input id="joinCode" placeholder="输入教师给的邀请码">
-            <button class="primary-btn" type="button" id="joinClass">加入班级</button>
-          </div>
-          <ul class="paper-list" style="margin-top: 14px;">
-            ${state.classes.map((klass) => `
-              <li class="paper-item">
-                <span class="paper-icon">${klass.level}级</span>
-                <div>
-                  <h3>${escapeHtml(klass.name)}</h3>
-                  <div class="meta"><span>教师 ${escapeHtml(klass.teacherName)}</span><span>学生 ${klass.studentCount}</span><span>作业 ${klass.assignmentCount}</span><span>邀请码 ${escapeHtml(klass.inviteCode)}</span></div>
-                </div>
-              </li>
-            `).join("") || `<li class="empty">还没有加入班级</li>`}
-          </ul>
+          <div class="form-grid"><input id="joinCode" placeholder="输入教师给的邀请码"><button class="primary-btn" type="button" id="joinClass">加入班级</button></div>
+          <ul class="paper-list" style="margin-top: 14px;">${state.classes.map((klass) => `<li class="paper-item"><span class="paper-icon">${klass.level}级</span><div><h3>${escapeHtml(klass.name)}</h3><div class="meta"><span>教师 ${escapeHtml(klass.teacherName)}</span><span>学生 ${klass.studentCount}</span><span>作业 ${klass.assignmentCount}</span><span>邀请码 ${escapeHtml(klass.inviteCode)}</span></div></div></li>`).join("") || `<li class="empty">还没有加入班级</li>`}</ul>
         </div>
       </section>
-      <aside class="side-stack">
-        <div class="panel">
-          <div class="panel-head"><h2>班级作业</h2></div>
-          <div class="panel-body">
-            <ul class="mini-list">
-              ${(data.assignments || []).map((item) => `<li><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a><span class="muted">${escapeHtml(item.dueAt || "长期")}</span></li>`).join("") || `<li class="muted">暂无作业</li>`}
-            </ul>
-          </div>
-        </div>
-      </aside>
+      <aside class="side-stack"><div class="panel"><div class="panel-head"><h2>班级作业</h2></div><div class="panel-body"><ul class="mini-list">${(data.assignments || []).map((item) => `<li><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a><span class="muted">${escapeHtml(item.dueAt || "长期")}</span></li>`).join("") || `<li class="muted">暂无作业</li>`}</ul></div></div></aside>
     </div>
   `;
-
   document.querySelector("#joinClass").addEventListener("click", joinClass);
 }
 
@@ -703,85 +588,31 @@ async function renderManage() {
   app.innerHTML = `
     <div class="grid">
       <section>
-        <div class="panel">
-          <div class="panel-head">
-            <h1>教学管理台</h1>
-            <span class="muted">${roleName(state.user.role)}</span>
-          </div>
-          <div class="panel-body stat-grid">
-            ${statCard("试卷", overview.totals.papers || 0)}
-            ${statCard("班级", overview.totals.classes || 0)}
-            ${statCard("学生", overview.totals.students || 0)}
-            ${statCard("提交", overview.totals.attempts || 0)}
-          </div>
-        </div>
-
+        <div class="panel"><div class="panel-head"><h1>教学管理台</h1><span class="muted">${roleName(state.user.role)}</span></div><div class="panel-body stat-grid">${statCard("试卷", overview.totals.papers || 0)}${statCard("班级", overview.totals.classes || 0)}${statCard("学生", overview.totals.students || 0)}${statCard("提交", overview.totals.attempts || 0)}</div></div>
         <div class="panel" style="margin-top: 18px;">
           <div class="panel-head"><h2>可视化建卷</h2></div>
           <div class="panel-body">
-            <div class="form-grid">
-              <select id="paperSelect">
-                <option value="">新建试卷</option>
-                ${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}
-              </select>
-              <button class="secondary-btn" type="button" id="loadPaper">载入</button>
-              <button class="danger-btn" type="button" id="deletePaper">删除</button>
-            </div>
+            <div class="form-grid"><select id="paperSelect"><option value="">新建试卷</option>${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}</select><button class="secondary-btn" type="button" id="loadPaper">载入</button><button class="danger-btn" type="button" id="deletePaper">删除</button></div>
             ${renderPaperBuilder(state.manage.editPaper || samplePaper())}
-            <details class="advanced-json">
-              <summary>高级 JSON 导入/导出</summary>
-              <textarea class="json-editor compact" id="paperJson" spellcheck="false">${escapeHtml(JSON.stringify(state.manage.editPaper || samplePaper(), null, 2))}</textarea>
-            </details>
-            <div class="submit-row">
-              <button class="primary-btn" type="button" id="savePaper">保存试卷</button>
-              <button class="secondary-btn" type="button" id="syncJson">同步到 JSON</button>
-              <span class="muted">日常用表单建卷；复杂导入可展开 JSON。</span>
-            </div>
+            <details class="advanced-json"><summary>高级 JSON 导入/导出</summary><textarea class="json-editor compact" id="paperJson" spellcheck="false">${escapeHtml(JSON.stringify(state.manage.editPaper || samplePaper(), null, 2))}</textarea></details>
+            <div class="submit-row"><button class="primary-btn" type="button" id="savePaper">保存试卷</button><button class="secondary-btn" type="button" id="syncJson">同步到 JSON</button><span class="muted">日常用表单建卷；复杂导入可展开 JSON。</span></div>
           </div>
         </div>
       </section>
-
       <aside class="side-stack">
-        <div class="panel">
-          <div class="panel-head"><h2>班级管理</h2></div>
-          <div class="panel-body">
-            <div class="stack-form">
-              <input id="className" placeholder="班级名称，如 周六一级班">
-              <select id="classLevel">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}">${index + 1} 级</option>`).join("")}</select>
-              <button class="primary-btn" type="button" id="createClass">创建班级</button>
-            </div>
-            <ul class="mini-list" style="margin-top: 12px;">
-              ${(overview.classes || []).map((klass) => `<li><span>${escapeHtml(klass.name)}<div class="muted">邀请码 ${escapeHtml(klass.inviteCode)}</div></span><span class="muted">${klass.studentCount} 人</span></li>`).join("") || `<li class="muted">暂无班级</li>`}
-            </ul>
-          </div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-head"><h2>发布作业</h2></div>
-          <div class="panel-body">
-            <div class="stack-form">
-              <select id="assignmentClass">${(overview.classes || []).map((klass) => `<option value="${klass.id}">${escapeHtml(klass.name)}</option>`).join("")}</select>
-              <select id="assignmentPaper">${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}</select>
-              <input id="assignmentDue" type="date">
-              <button class="primary-btn" type="button" id="createAssignment">发布作业</button>
-            </div>
-          </div>
-        </div>
-
+        <div class="panel"><div class="panel-head"><h2>班级管理</h2></div><div class="panel-body"><div class="stack-form"><input id="className" placeholder="班级名称，如 周六一级班"><select id="classLevel">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}">${index + 1} 级</option>`).join("")}</select><button class="primary-btn" type="button" id="createClass">创建班级</button></div><ul class="mini-list" style="margin-top: 12px;">${(overview.classes || []).map((klass) => `<li><span>${escapeHtml(klass.name)}<div class="muted">邀请码 ${escapeHtml(klass.inviteCode)}</div></span><span class="muted">${klass.studentCount} 人</span></li>`).join("") || `<li class="muted">暂无班级</li>`}</ul></div></div>
+        <div class="panel"><div class="panel-head"><h2>发布作业</h2></div><div class="panel-body"><div class="stack-form"><select id="assignmentClass">${(overview.classes || []).map((klass) => `<option value="${klass.id}">${escapeHtml(klass.name)}</option>`).join("")}</select><select id="assignmentPaper">${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}</select><input id="assignmentDue" type="date"><button class="primary-btn" type="button" id="createAssignment">发布作业</button></div></div></div>
         ${isAdmin() ? renderUserAdmin() : ""}
       </aside>
     </div>
   `;
-
   document.querySelector("#loadPaper").addEventListener("click", loadPaperIntoEditor);
   document.querySelector("#savePaper").addEventListener("click", savePaperFromEditor);
   document.querySelector("#syncJson").addEventListener("click", syncBuilderToJson);
   document.querySelector("#addSingle").addEventListener("click", () => addBuilderQuestion("single"));
   document.querySelector("#addJudge").addEventListener("click", () => addBuilderQuestion("judge"));
   document.querySelector("#addProgram").addEventListener("click", () => addBuilderQuestion("program"));
-  document.querySelectorAll("[data-remove-question]").forEach((button) => {
-    button.addEventListener("click", () => removeBuilderQuestion(Number(button.dataset.removeQuestion)));
-  });
+  document.querySelectorAll("[data-remove-question]").forEach((button) => button.addEventListener("click", () => removeBuilderQuestion(Number(button.dataset.removeQuestion))));
   document.querySelector("#deletePaper").addEventListener("click", deleteSelectedPaper);
   document.querySelector("#createClass").addEventListener("click", createClass);
   document.querySelector("#createAssignment").addEventListener("click", createAssignment);
@@ -799,60 +630,29 @@ function renderPaperBuilder(paper) {
       <div class="builder-meta">
         <label><span>试卷 ID</span><input id="paperIdInput" value="${escapeHtml(paper.id)}"></label>
         <label><span>标题</span><input id="paperTitleInput" value="${escapeHtml(paper.title)}"></label>
+        <label><span>考试类型</span><select id="paperCategoryInput">${["gesp", "cspj", "csps", "csp"].map((item) => `<option value="${item}" ${(paper.category || "gesp") === item ? "selected" : ""}>${categoryName(item)}</option>`).join("")}</select></label>
         <label><span>等级</span><select id="paperLevelInput">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}" ${Number(paper.level) === index + 1 ? "selected" : ""}>${index + 1} 级</option>`).join("")}</select></label>
         <label><span>月份</span><input id="paperMonthInput" value="${escapeHtml(paper.month || "06")}"></label>
         <label class="span-2"><span>说明</span><input id="paperSummaryInput" value="${escapeHtml(paper.summary || "")}"></label>
       </div>
-      <div class="builder-toolbar">
-        <button class="secondary-btn" type="button" id="addSingle">添加单选题</button>
-        <button class="secondary-btn" type="button" id="addJudge">添加判断题</button>
-        <button class="secondary-btn" type="button" id="addProgram">添加编程题</button>
-      </div>
-      <div class="builder-list">
-        ${questions.map((question, index) => renderBuilderQuestion(question, index)).join("") || `<div class="empty">还没有题目，先添加一题。</div>`}
-      </div>
+      <div class="builder-toolbar"><button class="secondary-btn" type="button" id="addSingle">添加单选题</button><button class="secondary-btn" type="button" id="addJudge">添加判断题</button><button class="secondary-btn" type="button" id="addProgram">添加编程题</button></div>
+      <div class="builder-list">${questions.map((question, index) => renderBuilderQuestion(question, index)).join("") || `<div class="empty">还没有题目，先添加一题。</div>`}</div>
     </div>
   `;
 }
 
 function renderBuilderQuestion(question, index) {
   const typeName = question.type === "single" ? "单选题" : question.type === "judge" ? "判断题" : "编程题";
-  return `
-    <article class="builder-question" data-builder-question="${index}">
-      <div class="question-head">
-        <span>第 ${index + 1} 题 · ${typeName}</span>
-        <button class="danger-btn" type="button" data-remove-question="${index}">删除</button>
-      </div>
-      <input data-field="id" value="${escapeHtml(question.id || `q${index + 1}`)}" placeholder="题目 ID">
-      <input data-field="score" type="number" value="${Number(question.score || 2)}" placeholder="分值">
-      ${question.type === "program" ? renderProgramBuilder(question) : renderObjectiveBuilder(question)}
-    </article>
-  `;
+  return `<article class="builder-question" data-builder-question="${index}"><div class="question-head"><span>第 ${index + 1} 题 · ${typeName}</span><button class="danger-btn" type="button" data-remove-question="${index}">删除</button></div><input data-field="id" value="${escapeHtml(question.id || `q${index + 1}`)}" placeholder="题目 ID"><input data-field="score" type="number" value="${Number(question.score || 2)}" placeholder="分值">${question.type === "program" ? renderProgramBuilder(question) : renderObjectiveBuilder(question)}</article>`;
 }
 
 function renderObjectiveBuilder(question) {
   const choices = question.type === "single" ? [...(question.choices || []), "", "", "", ""].slice(0, 4) : [];
-  return `
-    <textarea data-field="stem" placeholder="题干">${escapeHtml(question.stem || "")}</textarea>
-    ${
-      question.type === "single"
-        ? `<div class="choice-editor">${choices.map((choice, index) => `<label><span>${String.fromCharCode(65 + index)}</span><input data-choice="${index}" value="${escapeHtml(choice)}"></label>`).join("")}</div>
-           <label><span>正确选项</span><select data-field="answer">${choices.map((_, index) => `<option value="${index}" ${Number(question.answer || 0) === index ? "selected" : ""}>${String.fromCharCode(65 + index)}</option>`).join("")}</select></label>`
-        : `<label><span>正确答案</span><select data-field="answer"><option value="true" ${question.answer !== false ? "selected" : ""}>正确</option><option value="false" ${question.answer === false ? "selected" : ""}>错误</option></select></label>`
-    }
-    <textarea data-field="explanation" placeholder="解析">${escapeHtml(question.explanation || "")}</textarea>
-  `;
+  return `<textarea data-field="stem" placeholder="题干">${escapeHtml(question.stem || "")}</textarea>${question.type === "single" ? `<div class="choice-editor">${choices.map((choice, index) => `<label><span>${String.fromCharCode(65 + index)}</span><input data-choice="${index}" value="${escapeHtml(choice)}"></label>`).join("")}</div><label><span>正确选项</span><select data-field="answer">${choices.map((_, index) => `<option value="${index}" ${Number(question.answer || 0) === index ? "selected" : ""}>${String.fromCharCode(65 + index)}</option>`).join("")}</select></label>` : `<label><span>正确答案</span><select data-field="answer"><option value="true" ${question.answer !== false ? "selected" : ""}>正确</option><option value="false" ${question.answer === false ? "selected" : ""}>错误</option></select></label>`}<textarea data-field="explanation" placeholder="解析">${escapeHtml(question.explanation || "")}</textarea>`;
 }
 
 function renderProgramBuilder(question) {
-  return `
-    <input data-field="title" value="${escapeHtml(question.title || "")}" placeholder="编程题标题">
-    <textarea data-field="statement" placeholder="题面描述">${escapeHtml(question.statement || "")}</textarea>
-    <textarea data-field="input" placeholder="输入格式">${escapeHtml(question.input || "")}</textarea>
-    <textarea data-field="output" placeholder="输出格式">${escapeHtml(question.output || "")}</textarea>
-    <textarea data-field="samplesText" placeholder="样例，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.samples || []))}</textarea>
-    <textarea data-field="testsText" placeholder="隐藏测试点，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.tests || []))}</textarea>
-  `;
+  return `<input data-field="title" value="${escapeHtml(question.title || "")}" placeholder="编程题标题"><textarea data-field="statement" placeholder="题面描述">${escapeHtml(question.statement || "")}</textarea><textarea data-field="input" placeholder="输入格式">${escapeHtml(question.input || "")}</textarea><textarea data-field="output" placeholder="输出格式">${escapeHtml(question.output || "")}</textarea><textarea data-field="samplesText" placeholder="样例，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.samples || []))}</textarea><textarea data-field="testsText" placeholder="隐藏测试点，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.tests || []))}</textarea>`;
 }
 
 function formatCases(cases) {
@@ -860,17 +660,14 @@ function formatCases(cases) {
 }
 
 function parseCases(text) {
-  return String(text || "")
-    .split(/\n---\n/g)
-    .map((block) => block.split(/\n===\n/g))
-    .filter((parts) => parts.length >= 2 && (parts[0].trim() || parts.slice(1).join("\n").trim()))
-    .map((parts) => ({ input: parts[0].trimEnd() + "\n", output: parts.slice(1).join("\n===\n").trimEnd() + "\n" }));
+  return String(text || "").split(/\n---\n/g).map((block) => block.split(/\n===\n/g)).filter((parts) => parts.length >= 2 && (parts[0].trim() || parts.slice(1).join("\n").trim())).map((parts) => ({ input: parts[0].trimEnd() + "\n", output: parts.slice(1).join("\n===\n").trimEnd() + "\n" }));
 }
 
 function collectBuilderPaper() {
   const paper = {
     id: document.querySelector("#paperIdInput").value.trim(),
     title: document.querySelector("#paperTitleInput").value.trim(),
+    category: document.querySelector("#paperCategoryInput").value,
     level: Number(document.querySelector("#paperLevelInput").value),
     language: "C++",
     year: new Date().getFullYear(),
@@ -883,11 +680,7 @@ function collectBuilderPaper() {
   document.querySelectorAll("[data-builder-question]").forEach((item) => {
     const source = state.manage.editPaper.questions[Number(item.dataset.builderQuestion)];
     const type = source.type;
-    const question = {
-      id: item.querySelector('[data-field="id"]').value.trim(),
-      type,
-      score: Number(item.querySelector('[data-field="score"]').value || 0)
-    };
+    const question = { id: item.querySelector('[data-field="id"]').value.trim(), type, score: Number(item.querySelector('[data-field="score"]').value || 0) };
     if (type === "program") {
       Object.assign(question, {
         title: item.querySelector('[data-field="title"]').value.trim(),
@@ -946,7 +739,8 @@ function removeBuilderQuestion(index) {
 function samplePaper() {
   return {
     id: "new-paper-id",
-    title: "新建 GESP 练习卷",
+    title: "新建练习卷",
+    category: "gesp",
     level: 1,
     language: "C++",
     year: new Date().getFullYear(),
@@ -954,17 +748,7 @@ function samplePaper() {
     participants: 0,
     views: 0,
     summary: "请填写试卷说明",
-    questions: [
-      {
-        id: "q1",
-        type: "single",
-        score: 2,
-        stem: "示例单选题",
-        choices: ["A 选项", "B 选项", "C 选项", "D 选项"],
-        answer: 0,
-        explanation: "这里写解析。"
-      }
-    ]
+    questions: [{ id: "q1", type: "single", score: 2, stem: "示例单选题", choices: ["A 选项", "B 选项", "C 选项", "D 选项"], answer: 0, explanation: "这里写解析。" }]
   };
 }
 
@@ -979,9 +763,7 @@ async function savePaperFromEditor() {
   try {
     let paper = collectBuilderPaper();
     const jsonDetails = document.querySelector(".advanced-json");
-    if (jsonDetails?.open && document.querySelector("#paperJson").value.trim()) {
-      paper = JSON.parse(document.querySelector("#paperJson").value);
-    }
+    if (jsonDetails?.open && document.querySelector("#paperJson").value.trim()) paper = JSON.parse(document.querySelector("#paperJson").value);
     await api("/api/admin/papers", { method: "POST", body: { paper } });
     state.manage.editPaper = JSON.parse(JSON.stringify(paper));
     await refreshPapers();
@@ -1007,13 +789,7 @@ async function deleteSelectedPaper() {
 
 async function createClass() {
   try {
-    await api("/api/classes", {
-      method: "POST",
-      body: {
-        name: document.querySelector("#className").value,
-        level: document.querySelector("#classLevel").value
-      }
-    });
+    await api("/api/classes", { method: "POST", body: { name: document.querySelector("#className").value, level: document.querySelector("#classLevel").value } });
     await refreshMe();
     notify("班级已创建。");
     renderManage();
@@ -1027,10 +803,7 @@ async function createAssignment() {
   const paperId = document.querySelector("#assignmentPaper").value;
   if (!classId || !paperId) return notify("请先选择班级和试卷。");
   try {
-    await api(`/api/classes/${encodeURIComponent(classId)}/assignments`, {
-      method: "POST",
-      body: { paperId, dueAt: document.querySelector("#assignmentDue").value }
-    });
+    await api(`/api/classes/${encodeURIComponent(classId)}/assignments`, { method: "POST", body: { paperId, dueAt: document.querySelector("#assignmentDue").value } });
     notify("作业已发布。");
     renderManage();
   } catch (error) {
@@ -1039,38 +812,12 @@ async function createAssignment() {
 }
 
 function renderUserAdmin() {
-  return `
-    <div class="panel">
-      <div class="panel-head"><h2>用户管理</h2></div>
-      <div class="panel-body">
-        <div class="stack-form">
-          <input id="newUsername" placeholder="新账号">
-          <input id="newPassword" type="password" placeholder="初始密码">
-          <select id="newRole">
-            <option value="student">学生</option>
-            <option value="teacher">教师</option>
-            <option value="admin">管理员</option>
-          </select>
-          <button class="primary-btn" type="button" id="createUser">创建用户</button>
-        </div>
-        <ul class="mini-list" style="margin-top: 12px;">
-          ${state.manage.users.slice(0, 8).map((user) => `<li><span>${escapeHtml(user.username)}<div class="muted">${roleName(user.role)}</div></span><span class="muted">${user.attemptCount} 次</span></li>`).join("")}
-        </ul>
-      </div>
-    </div>
-  `;
+  return `<div class="panel"><div class="panel-head"><h2>用户管理</h2></div><div class="panel-body"><div class="stack-form"><input id="newUsername" placeholder="新账号"><input id="newPassword" type="password" placeholder="初始密码"><select id="newRole"><option value="student">学生</option><option value="teacher">教师</option><option value="admin">管理员</option></select><button class="primary-btn" type="button" id="createUser">创建用户</button></div><ul class="mini-list" style="margin-top: 12px;">${state.manage.users.slice(0, 8).map((user) => `<li><span>${escapeHtml(user.username)}<div class="muted">${roleName(user.role)}</div></span><span class="muted">${user.attemptCount} 次</span></li>`).join("")}</ul></div></div>`;
 }
 
 async function createUser() {
   try {
-    await api("/api/admin/users", {
-      method: "POST",
-      body: {
-        username: document.querySelector("#newUsername").value,
-        password: document.querySelector("#newPassword").value,
-        role: document.querySelector("#newRole").value
-      }
-    });
+    await api("/api/admin/users", { method: "POST", body: { username: document.querySelector("#newUsername").value, password: document.querySelector("#newPassword").value, role: document.querySelector("#newRole").value } });
     notify("用户已创建。");
     renderManage();
   } catch (error) {
@@ -1096,10 +843,7 @@ function renderAuthMode() {
 
 async function handleAuth() {
   try {
-    const data = await api(state.authMode === "login" ? "/api/login" : "/api/register", {
-      method: "POST",
-      body: { username: authUsername.value, password: authPassword.value }
-    });
+    const data = await api(state.authMode === "login" ? "/api/login" : "/api/register", { method: "POST", body: { username: authUsername.value, password: authPassword.value } });
     state.user = data.user;
     authDialog.close();
     authUsername.value = "";

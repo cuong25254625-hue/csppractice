@@ -1,5 +1,145 @@
 [
   {
+    "id": "csp-js-preliminary-sample",
+    "title": "CSP-J/S 初赛综合样卷",
+    "category": "csp",
+    "level": 1,
+    "language": "C++",
+    "year": 2026,
+    "month": "06",
+    "participants": 0,
+    "views": 0,
+    "summary": "面向 CSP-J/S 初赛的计算机基础、C++ 基础、逻辑推理和程序阅读样卷。",
+    "questions": [
+      {
+        "id": "csp-s1",
+        "type": "single",
+        "score": 2,
+        "stem": "下列哪一项通常属于计算机的输出设备？",
+        "choices": [
+          "键盘",
+          "鼠标",
+          "显示器",
+          "扫描仪"
+        ],
+        "answer": 2,
+        "explanation": "显示器用于把计算机处理后的信息展示给用户，属于输出设备。"
+      },
+      {
+        "id": "csp-s2",
+        "type": "single",
+        "score": 2,
+        "stem": "十进制数 13 转换为二进制是（）。",
+        "choices": [
+          "1011",
+          "1101",
+          "1110",
+          "1001"
+        ],
+        "answer": 1,
+        "explanation": "13 = 8 + 4 + 1，因此二进制为 1101。"
+      },
+      {
+        "id": "csp-s3",
+        "type": "single",
+        "score": 2,
+        "stem": "以下 C++ 表达式中，结果为 true 的是（）。",
+        "choices": [
+          "3 > 5",
+          "4 == 4",
+          "2 + 2 == 5",
+          "7 % 2 == 0"
+        ],
+        "answer": 1,
+        "explanation": "4 == 4 成立，其余表达式均不成立。"
+      },
+      {
+        "id": "csp-j1",
+        "type": "judge",
+        "score": 2,
+        "stem": "C++ 中数组下标通常从 0 开始。",
+        "answer": true,
+        "explanation": "例如 int a[5] 的合法下标是 0 到 4。"
+      },
+      {
+        "id": "csp-j2",
+        "type": "judge",
+        "score": 2,
+        "stem": "栈是一种先进先出（FIFO）的数据结构。",
+        "answer": false,
+        "explanation": "栈是后进先出（LIFO），队列才是先进先出（FIFO）。"
+      },
+      {
+        "id": "csp-p1",
+        "type": "single",
+        "score": 4,
+        "stem": "阅读程序：\n```cpp\nint s = 0;\nfor (int i = 1; i <= 5; i++) {\n    if (i % 2 == 1) s += i;\n}\ncout << s;\n```\n程序输出是（）。",
+        "choices": [
+          "6",
+          "9",
+          "15",
+          "5"
+        ],
+        "answer": 1,
+        "explanation": "累加 1、3、5，结果为 9。"
+      }
+    ]
+  },
+  {
+    "id": "001",
+    "title": "GESP一级",
+    "level": 1,
+    "language": "C++",
+    "year": 2026,
+    "month": "06",
+    "participants": 0,
+    "views": 0,
+    "summary": "请填写试卷说明GESP一级",
+    "questions": [
+      {
+        "id": "1",
+        "type": "single",
+        "score": 20,
+        "stem": "问题1",
+        "explanation": "解析。",
+        "choices": [
+          "选项1",
+          "选项2",
+          "选项3",
+          "选项4"
+        ],
+        "answer": 1
+      },
+      {
+        "id": "q2",
+        "type": "single",
+        "score": 80,
+        "stem": "q2",
+        "explanation": "",
+        "choices": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "answer": 0
+      },
+      {
+        "id": "q3",
+        "type": "judge",
+        "score": 2,
+        "stem": "",
+        "explanation": "",
+        "answer": false
+      }
+    ],
+    "createdBy": "7e2645ed-ad48-43fb-81b1-b3bd2eb53914",
+    "createdAt": "2026-05-07T06:27:57.207Z",
+    "updatedBy": "7e2645ed-ad48-43fb-81b1-b3bd2eb53914",
+    "updatedAt": "2026-05-07T06:27:57.207Z",
+    "category": "gesp"
+  },
+  {
     "id": "new-paper-id",
     "title": "新建 GESP 练习卷123",
     "level": 1,
@@ -28,7 +168,8 @@
     "createdBy": "6500f36e-7d73-4e50-9cef-dfdca275457f",
     "createdAt": "2026-05-07T05:53:07.890Z",
     "updatedBy": "6500f36e-7d73-4e50-9cef-dfdca275457f",
-    "updatedAt": "2026-05-07T05:53:07.890Z"
+    "updatedAt": "2026-05-07T05:53:07.890Z",
+    "category": "gesp"
   },
   {
     "id": "cpp-level-1-sample",
@@ -135,7 +276,8 @@
           }
         ]
       }
-    ]
+    ],
+    "category": "gesp"
   },
   {
     "id": "cpp-level-2-loop",
@@ -199,7 +341,8 @@
           }
         ]
       }
-    ]
+    ],
+    "category": "gesp"
   },
   {
     "id": "cpp-level-3-array",
@@ -263,7 +406,8 @@
           }
         ]
       }
-    ]
+    ],
+    "category": "gesp"
   },
   {
     "id": "cpp-level-4-branch",
@@ -315,7 +459,8 @@
           }
         ]
       }
-    ]
+    ],
+    "category": "gesp"
   },
   {
     "id": "cpp-level-5-template",
@@ -327,7 +472,8 @@
     "participants": 81,
     "views": 949,
     "summary": "可继续导入更多真题与专题题。",
-    "questions": []
+    "questions": [],
+    "category": "gesp"
   },
   {
     "id": "cpp-level-6-template",
@@ -339,7 +485,8 @@
     "participants": 40,
     "views": 814,
     "summary": "可继续导入更多真题与专题题。",
-    "questions": []
+    "questions": [],
+    "category": "gesp"
   },
   {
     "id": "cpp-level-7-template",
@@ -351,7 +498,8 @@
     "participants": 17,
     "views": 536,
     "summary": "可继续导入更多真题与专题题。",
-    "questions": []
+    "questions": [],
+    "category": "gesp"
   },
   {
     "id": "cpp-level-8-template",
@@ -363,6 +511,7 @@
     "participants": 62,
     "views": 1306,
     "summary": "可继续导入更多真题与专题题。",
-    "questions": []
+    "questions": [],
+    "category": "gesp"
   }
 ]

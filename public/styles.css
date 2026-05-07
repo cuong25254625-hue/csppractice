@@ -562,6 +562,43 @@ button {
   font-weight: 700;
 }
 
+.bulk-import-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.bulk-import-box select,
+.bulk-import-box input {
+  min-height: 38px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: #fff;
+}
+
+.import-hint {
+  margin: 8px 0 0;
+}
+
+.import-result {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f0fdf4;
+}
+
+.import-result ul {
+  margin: 4px 0 0 18px;
+  padding: 0;
+  color: var(--warn);
+}
+
 .progress-row {
   display: grid;
   gap: 6px;
@@ -1282,6 +1319,10 @@ button {
   }
 
   .class-create-form {
+    grid-template-columns: 1fr;
+  }
+
+  .bulk-import-box {
     grid-template-columns: 1fr;
   }
 

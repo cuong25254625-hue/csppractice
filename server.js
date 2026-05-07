@@ -4,6 +4,7 @@ const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
+const XLSX = require("xlsx");
 
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
@@ -12,6 +13,7 @@ const DB_FILE = path.join(DATA_DIR, "db.json");
 const PAPERS_FILE = path.join(DATA_DIR, "papers.json");
 const PORT = Number(process.env.PORT || 5173);
 const MAX_BODY = 1024 * 1024;
+const MAX_UPLOAD = 5 * 1024 * 1024;
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -240,6 +242,91 @@ function readBody(req) {
     });
     req.on("error", reject);
   });
+}
+
+function readRawBody(req, limit = MAX_UPLOAD) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error("上传文件过大。"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
+function parseMultipart(req, body) {
+  const boundary = /boundary=([^;]+)/i.exec(req.headers["content-type"] || "")?.[1]?.replace(/^"|"$/g, "");
+  if (!boundary) throw new Error("上传格式不正确。");
+  const parts = body.toString("binary").split(`--${boundary}`);
+  const result = { fields: {}, files: {} };
+  parts.forEach((part) => {
+    if (!part || part === "--\r\n" || part === "--") return;
+    const clean = part.replace(/^\r\n/, "").replace(/\r\n$/, "");
+    const splitIndex = clean.indexOf("\r\n\r\n");
+    if (splitIndex < 0) return;
+    const rawHeaders = clean.slice(0, splitIndex);
+    const rawContent = clean.slice(splitIndex + 4).replace(/\r\n--$/, "");
+    const disposition = /content-disposition:\s*form-data;\s*([^\r\n]+)/i.exec(rawHeaders)?.[1] || "";
+    const name = /name="([^"]+)"/i.exec(disposition)?.[1];
+    if (!name) return;
+    const filename = /filename="([^"]*)"/i.exec(disposition)?.[1];
+    const contentType = /content-type:\s*([^\r\n]+)/i.exec(rawHeaders)?.[1] || "";
+    const content = Buffer.from(rawContent, "binary");
+    if (filename) result.files[name] = { filename, contentType, content };
+    else result.fields[name] = content.toString("utf8").trim();
+  });
+  return result;
+}
+
+function userValidationError(username, password) {
+  if (!/^[A-Za-z][A-Za-z0-9_]{3,15}$/.test(username)) return "用户名需字母开头，4-16 位英文、数字或下划线。";
+  if (String(password || "").length < 6) return "密码至少 6 位。";
+  return "";
+}
+
+function createUserRecord(db, username, password, role) {
+  const { salt, hash } = hashPassword(password);
+  const newUser = {
+    id: crypto.randomUUID(),
+    username,
+    role,
+    status: "active",
+    salt,
+    passwordHash: hash,
+    createdAt: new Date().toISOString()
+  };
+  db.users.push(newUser);
+  return newUser;
+}
+
+function normalizeHeader(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function pickColumn(row, candidates) {
+  const entries = Object.entries(row);
+  const normalized = candidates.map(normalizeHeader);
+  const entry = entries.find(([key]) => normalized.includes(normalizeHeader(key)));
+  return entry ? String(entry[1] ?? "").trim() : "";
+}
+
+function parseUserRowsFromWorkbook(buffer) {
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) throw new Error("Excel 中没有工作表。");
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+  return rows.map((row) => ({
+    username: pickColumn(row, ["用户名", "账号", "账户", "username", "user"]),
+    password: pickColumn(row, ["密码", "password", "pass"])
+  })).filter((row) => row.username || row.password);
 }
 
 function publicPaper(paper) {
@@ -930,20 +1017,52 @@ async function api(req, res) {
     if (db.users.some((item) => item.username.toLowerCase() === username.toLowerCase())) {
       return sendJson(res, 409, { message: "用户名已存在。" });
     }
-    const { salt, hash } = hashPassword(password);
-    const newUser = {
-      id: crypto.randomUUID(),
-      username,
-      role,
-      status: "active",
-      salt,
-      passwordHash: hash,
-      createdAt: new Date().toISOString()
-    };
-    db.users.push(newUser);
+    const newUser = createUserRecord(db, username, password, role);
     audit(db, user, "user:create", newUser.id);
     saveDb(db);
     return sendJson(res, 201, { user: publicUser(newUser) });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/admin/users/import") {
+    const user = requireAdmin(req, res, db);
+    if (!user) return;
+    const upload = parseMultipart(req, await readRawBody(req));
+    const role = ["teacher", "student"].includes(upload.fields.role) ? upload.fields.role : "student";
+    const file = upload.files.file;
+    if (!file?.content?.length) return sendJson(res, 400, { message: "请上传 Excel 文件。" });
+    const rows = parseUserRowsFromWorkbook(file.content);
+    if (!rows.length) return sendJson(res, 400, { message: "表格中没有读取到用户名和密码。" });
+    const existingNames = new Set(db.users.map((item) => item.username.toLowerCase()));
+    const created = [];
+    const skipped = [];
+    const failed = [];
+    rows.forEach((row, index) => {
+      const username = String(row.username || "").trim();
+      const password = String(row.password || "");
+      const rowNumber = index + 2;
+      const error = userValidationError(username, password);
+      if (error) {
+        failed.push({ row: rowNumber, username, message: error });
+        return;
+      }
+      if (existingNames.has(username.toLowerCase())) {
+        skipped.push({ row: rowNumber, username, message: "用户名已存在。" });
+        return;
+      }
+      const newUser = createUserRecord(db, username, password, role);
+      existingNames.add(username.toLowerCase());
+      created.push(publicUser(newUser));
+      audit(db, user, "user:bulk-create", newUser.id);
+    });
+    if (created.length) saveDb(db);
+    return sendJson(res, 200, {
+      role,
+      total: rows.length,
+      created: created.length,
+      skipped,
+      failed,
+      users: created
+    });
   }
 
   const roleUpdate = url.pathname.match(/^\/api\/admin\/users\/([^/]+)\/role$/);

@@ -6,7 +6,7 @@ const state = {
   examTypes: [],
   authMode: "login",
   filters: { category: "all", level: "all", keyword: "" },
-  manage: { papers: [], overview: null, users: [], editPaper: null, classReport: null, tab: "papers" }
+  manage: { papers: [], overview: null, users: [], editPaper: null, classReport: null, tab: "papers", importResult: null }
 };
 
 const app = document.querySelector("#app");
@@ -753,6 +753,7 @@ async function renderManage() {
   document.querySelectorAll("[data-class-report]").forEach((button) => button.addEventListener("click", () => loadClassReport(button.dataset.classReport)));
   document.querySelector("#createAssignment")?.addEventListener("click", createAssignment);
   document.querySelector("#createUser")?.addEventListener("click", createUser);
+  document.querySelector("#importUsers")?.addEventListener("click", importUsersFromExcel);
   document.querySelector("#saveExamType")?.addEventListener("click", saveExamType);
   document.querySelectorAll("[data-delete-exam-type]").forEach((button) => button.addEventListener("click", () => deleteExamType(button.dataset.deleteExamType)));
 }
@@ -1191,13 +1192,67 @@ async function createAssignment() {
 }
 
 function renderUserAdmin() {
-  return `<div class="panel"><div class="panel-head"><h2>用户管理</h2></div><div class="panel-body"><div class="stack-form"><input id="newUsername" placeholder="新账号"><input id="newPassword" type="password" placeholder="初始密码"><select id="newRole"><option value="student">学生</option><option value="teacher">教师</option><option value="admin">管理员</option></select><button class="primary-btn" type="button" id="createUser">创建用户</button></div><ul class="mini-list" style="margin-top: 12px;">${state.manage.users.slice(0, 8).map((user) => `<li><span>${escapeHtml(user.username)}<div class="muted">${roleName(user.role)}</div></span><span class="muted">${user.attemptCount} 次</span></li>`).join("")}</ul></div></div>`;
+  return `
+    <div class="panel">
+      <div class="panel-head"><h2>用户管理</h2><span class="muted">${state.manage.users.length} 个账号</span></div>
+      <div class="panel-body">
+        <h3 class="subhead">单个创建</h3>
+        <div class="stack-form">
+          <input id="newUsername" placeholder="新账号">
+          <input id="newPassword" type="password" placeholder="初始密码">
+          <select id="newRole"><option value="student">学生</option><option value="teacher">教师</option><option value="admin">管理员</option></select>
+          <button class="primary-btn" type="button" id="createUser">创建用户</button>
+        </div>
+        <h3 class="subhead">Excel 批量导入</h3>
+        <div class="bulk-import-box">
+          <select id="bulkRole"><option value="student">创建为学生账号</option><option value="teacher">创建为教师账号</option></select>
+          <input id="bulkUserFile" type="file" accept=".xlsx,.xls,.csv">
+          <button class="primary-btn" type="button" id="importUsers">上传并创建</button>
+        </div>
+        <p class="muted import-hint">Excel 第一行表头包含“用户名”和“密码”即可；也支持 username/password。</p>
+        ${renderImportResult()}
+        <ul class="mini-list" style="margin-top: 12px;">${state.manage.users.slice(0, 8).map((user) => `<li><span>${escapeHtml(user.username)}<div class="muted">${roleName(user.role)}</div></span><span class="muted">${user.attemptCount} 次</span></li>`).join("")}</ul>
+      </div>
+    </div>
+  `;
+}
+
+function renderImportResult() {
+  const result = state.manage.importResult;
+  if (!result) return "";
+  const problems = [...(result.failed || []), ...(result.skipped || [])].slice(0, 8);
+  return `
+    <div class="import-result">
+      <strong>导入完成：成功 ${result.created} 个 / 共 ${result.total} 行</strong>
+      <span class="muted">角色：${roleName(result.role)}</span>
+      ${problems.length ? `<ul>${problems.map((item) => `<li>第 ${item.row} 行 ${escapeHtml(item.username || "")}：${escapeHtml(item.message)}</li>`).join("")}</ul>` : ""}
+    </div>
+  `;
 }
 
 async function createUser() {
   try {
     await api("/api/admin/users", { method: "POST", body: { username: document.querySelector("#newUsername").value, password: document.querySelector("#newPassword").value, role: document.querySelector("#newRole").value } });
     notify("用户已创建。");
+    renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function importUsersFromExcel() {
+  const fileInput = document.querySelector("#bulkUserFile");
+  const file = fileInput?.files?.[0];
+  if (!file) return notify("请先选择 Excel 文件。");
+  const body = new FormData();
+  body.append("role", document.querySelector("#bulkRole").value);
+  body.append("file", file);
+  try {
+    const response = await fetch("/api/admin/users/import", { method: "POST", credentials: "include", body });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || "导入失败。");
+    state.manage.importResult = data;
+    notify(`导入完成，成功创建 ${data.created} 个账号。`);
     renderManage();
   } catch (error) {
     notify(error.message);

@@ -154,6 +154,22 @@ function paperStats(paper) {
   };
 }
 
+function percent(score, fullScore) {
+  return fullScore ? Math.round((Number(score || 0) / Number(fullScore || 0)) * 100) : 0;
+}
+
+function scoreLevel(score, fullScore) {
+  const value = percent(score, fullScore);
+  if (value >= 90) return "excellent";
+  if (value >= 60) return "pass";
+  return "low";
+}
+
+function renderScoreBadge(score, fullScore, label = "得分") {
+  const value = percent(score, fullScore);
+  return `<span class="score-badge ${scoreLevel(score, fullScore)}"><strong>${value}</strong><small>%</small><em>${label} ${score}/${fullScore}</em></span>`;
+}
+
 function filteredPapers() {
   return state.papers.filter((paper) => {
     const category = paper.category || "gesp";
@@ -452,7 +468,23 @@ async function submitObjective(paperId) {
   try {
     const data = await api("/api/submit-objective", { method: "POST", body: { paperId, answers } });
     state.attempts.unshift(data.attempt);
-    document.querySelector("#scoreBox").innerHTML = `<strong>客观题得分：${data.score} / ${data.fullScore}</strong><div class="muted">已保存到练习记录。</div>`;
+    const correctCount = data.details.filter((item) => item.correct).length;
+    const wrongCount = data.details.length - correctCount;
+    document.querySelector("#scoreBox").innerHTML = `
+      <div class="score-summary ${scoreLevel(data.score, data.fullScore)}">
+        <div>
+          <span>客观题成绩</span>
+          <strong>${percent(data.score, data.fullScore)}<small>%</small></strong>
+        </div>
+        <p>${data.score} / ${data.fullScore} 分</p>
+      </div>
+      <div class="score-metrics">
+        <span class="status-ok">正确 ${correctCount}</span>
+        <span class="status-bad">错误 ${wrongCount}</span>
+        <span class="muted">共 ${data.details.length} 题</span>
+      </div>
+      <div class="muted">已保存到练习记录。</div>
+    `;
     applyObjectiveResult(data.details);
     notify("客观题判分完成。");
   } catch (error) {
@@ -529,7 +561,7 @@ async function renderStudy() {
         <div class="panel" style="margin-top: 18px;">
           <div class="panel-head"><h2>待完成作业</h2></div>
           <ul class="paper-list">
-            ${summary.assignments.filter((item) => !item.done).map((item) => `<li class="paper-item"><span class="paper-icon">作业</span><div><h3><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a></h3><div class="meta"><span>${escapeHtml(item.className)}</span><span>截止 ${escapeHtml(item.dueAt || "长期")}</span><span>客观题 ${item.bestObjective ? `${item.bestObjective.score}/${item.bestObjective.fullScore}` : "未提交"}</span><span>编程题 ${item.acceptedPrograms}/${item.programTotal}</span></div></div><a class="primary-btn" href="#/paper/${item.paperId}">去完成</a></li>`).join("") || `<li class="empty">暂无待完成作业</li>`}
+            ${summary.assignments.filter((item) => !item.done).map((item) => `<li class="paper-item"><span class="paper-icon">作业</span><div><h3><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a></h3><div class="meta"><span>${escapeHtml(item.className)}</span><span>截止 ${escapeHtml(item.dueAt || "长期")}</span><span>${item.bestObjective ? renderScoreBadge(item.bestObjective.score, item.bestObjective.fullScore, "客观题") : "客观题未提交"}</span><span>编程题 ${item.acceptedPrograms}/${item.programTotal}</span></div></div><a class="primary-btn" href="#/paper/${item.paperId}">去完成</a></li>`).join("") || `<li class="empty">暂无待完成作业</li>`}
           </ul>
         </div>
         <div class="panel" style="margin-top: 18px;">
@@ -586,8 +618,13 @@ function renderDashboard() {
 function renderAttemptRow(attempt) {
   const time = new Date(attempt.createdAt).toLocaleString("zh-CN", { hour12: false });
   const type = attempt.type === "objective" ? "客观题" : "编程题";
-  const result = attempt.type === "objective" ? `${attempt.score}/${attempt.fullScore}` : `${attempt.status} ${attempt.passed}/${attempt.total}`;
-  return `<tr><td>${escapeHtml(time)}</td><td><a href="#/paper/${attempt.paperId}">${escapeHtml(attempt.paperTitle)}</a>${attempt.questionTitle ? `<div class="muted">${escapeHtml(attempt.questionTitle)}</div>` : ""}</td><td>${type}</td><td>${escapeHtml(result)}</td></tr>`;
+  const result = attempt.type === "objective" ? renderScoreBadge(attempt.score, attempt.fullScore) : renderProgramStatus(attempt);
+  return `<tr><td>${escapeHtml(time)}</td><td><a href="#/paper/${attempt.paperId}">${escapeHtml(attempt.paperTitle)}</a>${attempt.questionTitle ? `<div class="muted">${escapeHtml(attempt.questionTitle)}</div>` : ""}</td><td>${type}</td><td>${result}</td></tr>`;
+}
+
+function renderProgramStatus(attempt) {
+  const accepted = attempt.status === "accepted";
+  return `<span class="program-status ${accepted ? "accepted" : "failed"}">${accepted ? "通过" : attempt.status} ${attempt.passed}/${attempt.total}</span>`;
 }
 
 async function renderClasses() {

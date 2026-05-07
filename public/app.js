@@ -6,7 +6,7 @@ const state = {
   examTypes: [],
   authMode: "login",
   filters: { category: "all", level: "all", keyword: "" },
-  manage: { papers: [], overview: null, users: [], editPaper: null, classReport: null, tab: "papers", importResult: null }
+  manage: { papers: [], overview: null, users: [], editPaper: null, classReport: null, tab: "papers", paperView: "list", importResult: null }
 };
 
 const app = document.querySelector("#app");
@@ -739,6 +739,7 @@ async function renderManage() {
     state.manage.tab = button.dataset.manageTab;
     renderManage();
   }));
+  document.querySelector("#backPaperList")?.addEventListener("click", showPaperList);
   document.querySelector("#newPaper")?.addEventListener("click", createNewPaper);
   document.querySelector("#savePaper")?.addEventListener("click", savePaperFromEditor);
   document.querySelector("#syncJson")?.addEventListener("click", syncBuilderToJson);
@@ -771,31 +772,42 @@ function manageTabButton(id, label, active) {
 }
 
 function renderManagePapersSection() {
+  if ((state.manage.paperView || "list") !== "editor") return renderPaperListSection();
+  return renderPaperEditorSection();
+}
+
+function renderPaperListSection() {
+  return `
+    <div class="panel">
+      <div class="panel-head"><h2>管理试卷</h2><span class="muted">${state.manage.papers.length} 套试卷</span></div>
+      <div class="panel-body">
+        <div class="paper-manage-actions">
+          <label class="inline-check"><input id="selectAllPapers" type="checkbox">全选</label>
+          <button class="danger-btn" type="button" id="deleteSelectedPapers">删除选中</button>
+          <button class="primary-btn" type="button" id="newPaper">创建新试卷</button>
+        </div>
+        <div class="paper-manage-list">
+          ${state.manage.papers.map(renderPaperManageRow).join("") || `<div class="empty">暂无试卷。</div>`}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderPaperEditorSection() {
   const editingPaper = state.manage.editPaper || samplePaper();
   const editingExisting = state.manage.papers.some((paper) => paper.id === editingPaper.id);
   return `
-    <div class="manage-paper-layout">
-      <div class="panel">
-        <div class="panel-head"><h2>管理试卷</h2><span class="muted">${state.manage.papers.length} 套试卷</span></div>
-        <div class="panel-body">
-          <div class="paper-manage-actions">
-            <label class="inline-check"><input id="selectAllPapers" type="checkbox">全选</label>
-            <button class="danger-btn" type="button" id="deleteSelectedPapers">删除选中</button>
-            <button class="primary-btn" type="button" id="newPaper">创建新试卷</button>
-          </div>
-          <div class="paper-manage-list">
-            ${state.manage.papers.map(renderPaperManageRow).join("") || `<div class="empty">暂无试卷。</div>`}
-          </div>
-        </div>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>${editingExisting ? "修改试卷" : "创建试卷"}</h2>
+        <button class="secondary-btn" type="button" id="backPaperList">返回管理试卷</button>
       </div>
-      <div class="panel">
-        <div class="panel-head"><h2>${editingExisting ? "修改试卷" : "创建试卷"}</h2><span class="muted">可视化编辑题目和 Markdown 内容</span></div>
-        <div class="panel-body">
+      <div class="panel-body">
         ${renderPaperBuilder(editingPaper)}
         <details class="advanced-json"><summary>高级 JSON 导入/导出</summary><textarea class="json-editor compact" id="paperJson" spellcheck="false">${escapeHtml(JSON.stringify(state.manage.editPaper || samplePaper(), null, 2))}</textarea></details>
         <div class="submit-row"><button class="primary-btn" type="button" id="savePaper">保存试卷</button><button class="secondary-btn" type="button" id="syncJson">同步到 JSON</button><span class="muted">日常用表单建卷；复杂导入可展开 JSON。</span></div>
       </div>
-    </div>
     </div>
   `;
 }
@@ -1064,14 +1076,21 @@ function samplePaper() {
   };
 }
 
+function showPaperList() {
+  state.manage.paperView = "list";
+  renderManage();
+}
+
 function createNewPaper() {
   state.manage.editPaper = samplePaper();
+  state.manage.paperView = "editor";
   renderManage();
 }
 
 function loadPaperIntoEditor(id) {
   const paper = state.manage.papers.find((item) => item.id === id) || samplePaper();
   state.manage.editPaper = JSON.parse(JSON.stringify(paper));
+  state.manage.paperView = "editor";
   renderManage();
 }
 
@@ -1097,6 +1116,7 @@ async function deletePaperById(id) {
     await api(`/api/admin/papers/${encodeURIComponent(id)}`, { method: "DELETE" });
     await refreshPapers();
     if (state.manage.editPaper?.id === id) state.manage.editPaper = samplePaper();
+    state.manage.paperView = "list";
     notify("试卷已删除。");
     renderManage();
   } catch (error) {
@@ -1120,6 +1140,7 @@ async function deleteSelectedPapers() {
     }
     await refreshPapers();
     if (ids.includes(state.manage.editPaper?.id)) state.manage.editPaper = samplePaper();
+    state.manage.paperView = "list";
     notify(`已删除 ${ids.length} 套试卷。`);
     renderManage();
   } catch (error) {
@@ -1387,7 +1408,9 @@ function toggleAccountMenu() {
 }
 
 function updateAuthButton() {
-  accountManageLink.hidden = !isTeacher();
+  const canManage = Boolean(isTeacher());
+  accountManageLink.hidden = !canManage;
+  accountManageLink.style.display = canManage ? "" : "none";
   authButton.textContent = state.user ? state.user.username : "登录";
   if (!state.user) closeAccountMenu();
 }

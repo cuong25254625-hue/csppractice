@@ -446,6 +446,57 @@ button {
   align-items: start;
 }
 
+.manage-paper-layout {
+  display: grid;
+  gap: 18px;
+}
+
+.paper-manage-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.paper-manage-list {
+  display: grid;
+  gap: 10px;
+}
+
+.paper-manage-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfdff;
+}
+
+.paper-manage-row h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.paper-check {
+  display: grid;
+  place-items: center;
+}
+
+.paper-check input {
+  width: 18px;
+  height: 18px;
+}
+
+.paper-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .manage-settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -836,6 +887,31 @@ button {
   position: relative;
   white-space: pre;
   word-break: normal;
+  counter-reset: code-line;
+}
+
+.code-block code {
+  display: block;
+}
+
+.code-line {
+  display: block;
+  min-height: 1.5em;
+  padding-right: 12px;
+  white-space: pre;
+}
+
+.code-line::before {
+  counter-increment: code-line;
+  content: counter(code-line);
+  display: inline-block;
+  width: 2.8em;
+  margin-right: 12px;
+  padding-right: 10px;
+  border-right: 1px solid #d8e2ee;
+  color: #64748b;
+  text-align: right;
+  user-select: none;
 }
 
 .code-block[data-lang]::before {
@@ -1329,6 +1405,15 @@ button {
   .class-manage-card {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .paper-manage-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .paper-row-actions {
+    grid-column: 2;
+    justify-content: flex-start;
   }
 
   .class-card-actions {

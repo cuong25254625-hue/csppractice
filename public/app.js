@@ -67,11 +67,16 @@ function renderMarkdown(value) {
   while ((match = fence.exec(text))) {
     html.push(renderMarkdownBlocks(text.slice(cursor, match.index)));
     const lang = match[2] ? ` data-lang="${escapeHtml(match[2])}"` : "";
-    html.push(`<pre class="code-block"${lang}><code>${escapeHtml(match[3].trimEnd())}</code></pre>`);
+    html.push(renderCodeBlock(match[3].trimEnd(), lang));
     cursor = match.index + match[0].length;
   }
   html.push(renderMarkdownBlocks(text.slice(cursor)));
   return html.join("");
+}
+
+function renderCodeBlock(code, lang = "") {
+  const lines = String(code || "").split("\n");
+  return `<pre class="code-block"${lang}><code>${lines.map((line) => `<span class="code-line">${escapeHtml(line) || " "}</span>`).join("")}</code></pre>`;
 }
 
 function renderMarkdownBlocks(value) {
@@ -734,7 +739,7 @@ async function renderManage() {
     state.manage.tab = button.dataset.manageTab;
     renderManage();
   }));
-  document.querySelector("#loadPaper")?.addEventListener("click", loadPaperIntoEditor);
+  document.querySelector("#newPaper")?.addEventListener("click", createNewPaper);
   document.querySelector("#savePaper")?.addEventListener("click", savePaperFromEditor);
   document.querySelector("#syncJson")?.addEventListener("click", syncBuilderToJson);
   document.querySelector("#paperCategoryInput")?.addEventListener("change", () => {
@@ -746,7 +751,10 @@ async function renderManage() {
   document.querySelector("#addProgram")?.addEventListener("click", () => addBuilderQuestion("program"));
   document.querySelectorAll("[data-remove-question]").forEach((button) => button.addEventListener("click", () => removeBuilderQuestion(Number(button.dataset.removeQuestion))));
   document.querySelectorAll("[data-insert-markdown]").forEach((button) => button.addEventListener("click", () => insertMarkdownSnippet(button)));
-  document.querySelector("#deletePaper")?.addEventListener("click", deleteSelectedPaper);
+  document.querySelectorAll("[data-edit-paper]").forEach((button) => button.addEventListener("click", () => loadPaperIntoEditor(button.dataset.editPaper)));
+  document.querySelectorAll("[data-delete-paper]").forEach((button) => button.addEventListener("click", () => deletePaperById(button.dataset.deletePaper)));
+  document.querySelector("#selectAllPapers")?.addEventListener("change", toggleAllPapers);
+  document.querySelector("#deleteSelectedPapers")?.addEventListener("click", deleteSelectedPapers);
   document.querySelector("#createClass")?.addEventListener("click", createClass);
   document.querySelector("#classCategory")?.addEventListener("change", updateClassLevelVisibility);
   updateClassLevelVisibility();
@@ -763,16 +771,49 @@ function manageTabButton(id, label, active) {
 }
 
 function renderManagePapersSection() {
+  const editingPaper = state.manage.editPaper || samplePaper();
+  const editingExisting = state.manage.papers.some((paper) => paper.id === editingPaper.id);
   return `
-    <div class="panel">
-      <div class="panel-head"><h2>可视化建卷</h2><span class="muted">编辑试卷、题目和 Markdown 内容</span></div>
-      <div class="panel-body">
-        <div class="form-grid"><select id="paperSelect"><option value="">新建试卷</option>${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}</select><button class="secondary-btn" type="button" id="loadPaper">载入</button><button class="danger-btn" type="button" id="deletePaper">删除</button></div>
-        ${renderPaperBuilder(state.manage.editPaper || samplePaper())}
+    <div class="manage-paper-layout">
+      <div class="panel">
+        <div class="panel-head"><h2>管理试卷</h2><span class="muted">${state.manage.papers.length} 套试卷</span></div>
+        <div class="panel-body">
+          <div class="paper-manage-actions">
+            <label class="inline-check"><input id="selectAllPapers" type="checkbox">全选</label>
+            <button class="danger-btn" type="button" id="deleteSelectedPapers">删除选中</button>
+            <button class="primary-btn" type="button" id="newPaper">创建新试卷</button>
+          </div>
+          <div class="paper-manage-list">
+            ${state.manage.papers.map(renderPaperManageRow).join("") || `<div class="empty">暂无试卷。</div>`}
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>${editingExisting ? "修改试卷" : "创建试卷"}</h2><span class="muted">可视化编辑题目和 Markdown 内容</span></div>
+        <div class="panel-body">
+        ${renderPaperBuilder(editingPaper)}
         <details class="advanced-json"><summary>高级 JSON 导入/导出</summary><textarea class="json-editor compact" id="paperJson" spellcheck="false">${escapeHtml(JSON.stringify(state.manage.editPaper || samplePaper(), null, 2))}</textarea></details>
         <div class="submit-row"><button class="primary-btn" type="button" id="savePaper">保存试卷</button><button class="secondary-btn" type="button" id="syncJson">同步到 JSON</button><span class="muted">日常用表单建卷；复杂导入可展开 JSON。</span></div>
       </div>
     </div>
+    </div>
+  `;
+}
+
+function renderPaperManageRow(paper) {
+  const stats = paperStats(paper);
+  return `
+    <article class="paper-manage-row">
+      <label class="paper-check"><input type="checkbox" data-paper-select="${paper.id}"></label>
+      <div>
+        <h3>${escapeHtml(paper.title)}</h3>
+        <div class="meta"><span>${escapeHtml(categoryName(paper.category || "gesp"))}</span>${examTypeById(paper.category || "gesp").levelEnabled ? `<span>${paper.level} 级</span>` : ""}<span>${stats.fullScore} 分</span><span>${stats.objective} 客观题</span><span>${stats.program} 编程题</span></div>
+      </div>
+      <div class="paper-row-actions">
+        <button class="secondary-btn" type="button" data-edit-paper="${paper.id}">修改</button>
+        <button class="danger-btn" type="button" data-delete-paper="${paper.id}">删除</button>
+      </div>
+    </article>
   `;
 }
 
@@ -1023,8 +1064,12 @@ function samplePaper() {
   };
 }
 
-function loadPaperIntoEditor() {
-  const id = document.querySelector("#paperSelect").value;
+function createNewPaper() {
+  state.manage.editPaper = samplePaper();
+  renderManage();
+}
+
+function loadPaperIntoEditor(id) {
   const paper = state.manage.papers.find((item) => item.id === id) || samplePaper();
   state.manage.editPaper = JSON.parse(JSON.stringify(paper));
   renderManage();
@@ -1045,13 +1090,37 @@ async function savePaperFromEditor() {
   }
 }
 
-async function deleteSelectedPaper() {
-  const id = document.querySelector("#paperSelect").value;
-  if (!id) return notify("请选择要删除的试卷。");
+async function deletePaperById(id) {
+  if (!id) return;
+  if (!window.confirm("确定删除这套试卷吗？")) return;
   try {
     await api(`/api/admin/papers/${encodeURIComponent(id)}`, { method: "DELETE" });
     await refreshPapers();
+    if (state.manage.editPaper?.id === id) state.manage.editPaper = samplePaper();
     notify("试卷已删除。");
+    renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+function toggleAllPapers(event) {
+  document.querySelectorAll("[data-paper-select]").forEach((item) => {
+    item.checked = event.target.checked;
+  });
+}
+
+async function deleteSelectedPapers() {
+  const ids = Array.from(document.querySelectorAll("[data-paper-select]:checked")).map((item) => item.dataset.paperSelect);
+  if (!ids.length) return notify("请先勾选要删除的试卷。");
+  if (!window.confirm(`确定删除选中的 ${ids.length} 套试卷吗？`)) return;
+  try {
+    for (const id of ids) {
+      await api(`/api/admin/papers/${encodeURIComponent(id)}`, { method: "DELETE" });
+    }
+    await refreshPapers();
+    if (ids.includes(state.manage.editPaper?.id)) state.manage.editPaper = samplePaper();
+    notify(`已删除 ${ids.length} 套试卷。`);
     renderManage();
   } catch (error) {
     notify(error.message);

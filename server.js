@@ -634,6 +634,24 @@ function updatePaperVisibility(req, res, db, papers, user, id, hidden) {
   return sendJson(res, 200, { paper: paperWithVisibility(db, paper) });
 }
 
+function updatePapersVisibility(req, res, db, papers, user, ids, hidden) {
+  const uniqueIds = Array.from(new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean)));
+  if (!uniqueIds.length) return sendJson(res, 400, { message: "请先选择试卷。" });
+  const paperMap = new Map(papers.map((paper) => [paper.id, paper]));
+  const missing = uniqueIds.filter((id) => !paperMap.has(id));
+  if (missing.length) return sendJson(res, 404, { message: `试卷不存在：${missing.join("、")}` });
+  db.paperVisibility ||= {};
+  uniqueIds.forEach((id) => {
+    db.paperVisibility[id] = Boolean(hidden);
+    audit(db, user, db.paperVisibility[id] ? "paper:hide" : "paper:show", id);
+  });
+  saveDb(db);
+  return sendJson(res, 200, {
+    count: uniqueIds.length,
+    papers: uniqueIds.map((id) => paperWithVisibility(db, paperMap.get(id)))
+  });
+}
+
 function isPaperHidden(db, paper) {
   if (!paper) return false;
   if (Object.prototype.hasOwnProperty.call(db.paperVisibility || {}, paper.id)) {
@@ -994,6 +1012,7 @@ async function api(req, res) {
     const user = requireTeacher(req, res, db);
     if (!user) return;
     const body = await readBody(req);
+    if (Array.isArray(body.ids)) return updatePapersVisibility(req, res, db, papers, user, body.ids, body.hidden);
     return updatePaperVisibility(req, res, db, papers, user, String(body.id || ""), body.hidden);
   }
 

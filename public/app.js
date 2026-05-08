@@ -851,6 +851,8 @@ async function renderManage() {
   document.querySelectorAll("[data-delete-paper]").forEach((button) => button.addEventListener("click", () => deletePaperById(button.dataset.deletePaper)));
   document.querySelectorAll("[data-toggle-paper-hidden]").forEach((button) => button.addEventListener("click", () => togglePaperHidden(button.dataset.togglePaperHidden)));
   document.querySelector("#selectAllPapers")?.addEventListener("change", toggleAllPapers);
+  document.querySelector("#hideSelectedPapers")?.addEventListener("click", () => setSelectedPapersVisibility(true));
+  document.querySelector("#showSelectedPapers")?.addEventListener("click", () => setSelectedPapersVisibility(false));
   document.querySelector("#deleteSelectedPapers")?.addEventListener("click", deleteSelectedPapers);
   document.querySelector("#createClass")?.addEventListener("click", createClass);
   document.querySelector("#classCategory")?.addEventListener("change", updateClassLevelVisibility);
@@ -880,6 +882,8 @@ function renderPaperListSection() {
       <div class="panel-body">
         <div class="paper-manage-actions">
           <label class="inline-check"><input id="selectAllPapers" type="checkbox">全选</label>
+          <button class="secondary-btn" type="button" id="hideSelectedPapers">隐藏选中</button>
+          <button class="secondary-btn" type="button" id="showSelectedPapers">显示选中</button>
           <button class="danger-btn" type="button" id="deleteSelectedPapers">删除选中</button>
           <button class="primary-btn" type="button" id="newPaper">创建新试卷</button>
         </div>
@@ -1386,8 +1390,26 @@ function toggleAllPapers(event) {
   });
 }
 
+function selectedPaperIds() {
+  return Array.from(document.querySelectorAll("[data-paper-select]:checked")).map((item) => item.dataset.paperSelect);
+}
+
+async function setSelectedPapersVisibility(hidden) {
+  const ids = selectedPaperIds();
+  if (!ids.length) return notify("请先勾选试卷。");
+  try {
+    await api("/api/admin/papers/visibility", { method: "POST", body: { ids, hidden } });
+    await refreshPapers();
+    if (state.manage.editPaper && ids.includes(state.manage.editPaper.id)) state.manage.editPaper.hidden = hidden;
+    notify(hidden ? `已隐藏 ${ids.length} 套试卷。` : `已显示 ${ids.length} 套试卷。`);
+    await renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
 async function deleteSelectedPapers() {
-  const ids = Array.from(document.querySelectorAll("[data-paper-select]:checked")).map((item) => item.dataset.paperSelect);
+  const ids = selectedPaperIds();
   if (!ids.length) return notify("请先勾选要删除的试卷。");
   if (!window.confirm(`确定删除选中的 ${ids.length} 套试卷吗？`)) return;
   try {

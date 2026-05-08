@@ -105,6 +105,7 @@ function normalizeDb(db) {
   db.assignments ||= [];
   db.auditLogs ||= [];
   db.examTypes ||= [];
+  db.paperVisibility ||= {};
 
   db.users.forEach((user) => {
     user.role ||= "student";
@@ -626,13 +627,23 @@ function normalizeQuestion(question, fallbackId) {
 function updatePaperVisibility(req, res, db, papers, user, id, hidden) {
   const paper = papers.find((item) => item.id === id);
   if (!paper) return sendJson(res, 404, { message: "试卷不存在。" });
-  paper.hidden = Boolean(hidden);
-  paper.updatedBy = user.id;
-  paper.updatedAt = new Date().toISOString();
-  audit(db, user, paper.hidden ? "paper:hide" : "paper:show", id);
-  savePapers(papers);
+  db.paperVisibility ||= {};
+  db.paperVisibility[id] = Boolean(hidden);
+  audit(db, user, db.paperVisibility[id] ? "paper:hide" : "paper:show", id);
   saveDb(db);
-  return sendJson(res, 200, { paper: { ...paper, hidden: Boolean(paper.hidden) } });
+  return sendJson(res, 200, { paper: paperWithVisibility(db, paper) });
+}
+
+function isPaperHidden(db, paper) {
+  if (!paper) return false;
+  if (Object.prototype.hasOwnProperty.call(db.paperVisibility || {}, paper.id)) {
+    return Boolean(db.paperVisibility[paper.id]);
+  }
+  return Boolean(paper.hidden);
+}
+
+function paperWithVisibility(db, paper) {
+  return { ...paper, hidden: isPaperHidden(db, paper) };
 }
 
 function slugify(value) {
@@ -707,7 +718,7 @@ function buildStudentSummary(user, db, papers) {
     .filter((item) => classIds.has(item.classId))
     .map((assignment) => {
       const paper = papers.find((item) => item.id === assignment.paperId);
-      if (paper?.hidden) return null;
+      if (isPaperHidden(db, paper)) return null;
       const related = attempts.filter((item) => item.paperId === assignment.paperId);
       const objective = related
         .filter((item) => item.type === "objective")
@@ -754,7 +765,7 @@ function buildStudentSummary(user, db, papers) {
 
   const progress = Array.from({ length: 8 }, (_, index) => {
     const level = index + 1;
-    const levelPapers = papers.filter((paper) => !paper.hidden && (paper.category || "gesp") === "gesp" && Number(paper.level) === level);
+    const levelPapers = papers.filter((paper) => !isPaperHidden(db, paper) && (paper.category || "gesp") === "gesp" && Number(paper.level) === level);
     const practiced = new Set(attempts.map((attempt) => attempt.paperId));
     return {
       level,
@@ -792,7 +803,7 @@ async function api(req, res) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/papers") {
-    return sendJson(res, 200, { papers: papers.filter((paper) => !paper.hidden).map(publicPaper) });
+    return sendJson(res, 200, { papers: papers.filter((paper) => !isPaperHidden(db, paper)).map(publicPaper) });
   }
 
   if (req.method === "GET" && url.pathname === "/api/exam-types") {
@@ -877,7 +888,7 @@ async function api(req, res) {
     const body = await readBody(req);
     const paper = papers.find((item) => item.id === body.paperId);
     if (!paper) return sendJson(res, 404, { message: "试卷不存在。" });
-    if (paper.hidden && !isTeacher(user)) return sendJson(res, 404, { message: "试卷不存在。" });
+    if (isPaperHidden(db, paper) && !isTeacher(user)) return sendJson(res, 404, { message: "试卷不存在。" });
     const answers = body.answers || {};
     const objectiveQuestions = flattenObjectiveQuestions(paper.questions || []);
     let score = 0;
@@ -916,7 +927,7 @@ async function api(req, res) {
     if (!user) return;
     const body = await readBody(req);
     const { paper, question } = findQuestion(papers, body.paperId, body.questionId);
-    if (paper?.hidden && !isTeacher(user)) return sendJson(res, 404, { message: "试卷不存在。" });
+    if (isPaperHidden(db, paper) && !isTeacher(user)) return sendJson(res, 404, { message: "试卷不存在。" });
     if (!paper || !question || question.type !== "program") {
       return sendJson(res, 404, { message: "编程题不存在。" });
     }
@@ -957,7 +968,7 @@ async function api(req, res) {
   if (req.method === "GET" && url.pathname === "/api/admin/papers") {
     const user = requireTeacher(req, res, db);
     if (!user) return;
-    return sendJson(res, 200, { papers: papers.map((paper) => ({ ...paper, hidden: Boolean(paper.hidden) })) });
+    return sendJson(res, 200, { papers: papers.map((paper) => paperWithVisibility(db, paper)) });
   }
 
   if (req.method === "POST" && url.pathname === "/api/admin/papers") {
@@ -1056,7 +1067,7 @@ async function api(req, res) {
     if (!user) return;
     const classes = db.classes.filter((klass) => canAccessClass(user, klass, db)).map((klass) => classPayload(klass, db));
     const classIds = new Set(classes.map((klass) => klass.id));
-    const visiblePaperIds = new Set(papers.filter((paper) => !paper.hidden).map((paper) => paper.id));
+    const visiblePaperIds = new Set(papers.filter((paper) => !isPaperHidden(db, paper)).map((paper) => paper.id));
     return sendJson(res, 200, {
       classes,
       assignments: db.assignments.filter((item) => classIds.has(item.classId) && visiblePaperIds.has(item.paperId))

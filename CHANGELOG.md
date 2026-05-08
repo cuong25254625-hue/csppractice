@@ -9,6 +9,14 @@ npm install
 pm2 restart csppractice
 ```
 
+```bash
+cd /opt/csppractice
+git pull origin main
+npm install --omit=dev
+pm2 restart csppractice
+pm2 save
+```
+
 然后在浏览器中强制刷新页面：
 
 - Windows：`Ctrl + F5`

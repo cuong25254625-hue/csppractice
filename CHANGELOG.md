@@ -14,6 +14,14 @@ pm2 restart csppractice
 - Windows：`Ctrl + F5`
 - macOS：`Cmd + Shift + R`
 
+## 2026-05-08
+
+### 本次更新 - 彻底关闭 MathJax 辅助探索弹窗
+
+- 进一步关闭 MathJax 的语义增强、公式探索、语音和盲文相关开关。
+- 页面加载前清理旧的 `MathJax-Menu-Settings` 浏览器缓存，避免历史设置重新启用公式探索模式。
+- 增加 `mjx-help` 隐藏兜底样式，防止点击公式后出现小感叹号和英文说明弹窗。
+
 ## 2026-05-07
 
 ### 本次更新 - 公式提示和选项富文本

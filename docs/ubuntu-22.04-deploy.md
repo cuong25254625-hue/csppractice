@@ -29,8 +29,9 @@ apt install -y nodejs
 ```bash
 node -v
 npm -v
-g++ --version
 ```
+
+如果后续要开启编程题提交，还需要确认 `g++ --version` 可用，并先配置运行沙箱。
 
 ## 3. 拉取项目
 
@@ -163,15 +164,15 @@ pm2 restart csppractice
 1. 登录 `admin / admin123`。
 2. 创建你自己的管理员账号。
 3. 停用或删除默认演示账号。
-4. 定期备份 `data/db.json` 和 `data/papers.json`。
+4. 定期备份 `data/runtime.sqlite` 和 `data/papers.json`。
 
 ## 9. 安全提醒
 
-当前 C++ 评测会在服务器本机编译并运行学生提交的代码。小范围试用可以，但正式开放给大量学生前，建议升级为 Docker/沙箱评测，限制 CPU、内存、文件系统和网络访问。
+编程题提交默认关闭。配置好 Docker 或专用沙箱评测后，再通过 `ENABLE_PROGRAM_SUBMISSION=true` 开放入口；正式开放给大量学生前，需要限制 CPU、内存、文件系统和网络访问。
 
 后续正式上线还建议：
 
 - 配置 HTTPS。
 - 添加数据库备份。
-- 将 `data/db.json` 迁移到 SQLite、PostgreSQL 或 MySQL。
+- 后续按规模评估是否从 SQLite 迁移到 PostgreSQL 或 MySQL。
 - 增加日志监控和异常报警。

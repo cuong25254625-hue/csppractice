@@ -6,6 +6,7 @@ const state = {
   examTypes: [],
   authMode: "login",
   filters: { category: "all", level: "all", keyword: "" },
+  programSubmissionEnabled: false,
   manage: { papers: [], overview: null, users: [], editPaper: null, classReport: null, tab: "papers", paperView: "list", importResult: null }
 };
 
@@ -393,7 +394,7 @@ function renderPaper(paperId) {
             <button class="primary-btn" type="button" id="submitObjective" ${objectiveQuestions.length ? "" : "disabled"}>提交</button>
           </div>
           <div class="score-box" id="scoreBox">
-            <div class="muted">单选和判断题自动判分；编程题逐题提交。</div>
+            <div class="muted">${state.programSubmissionEnabled ? "单选和判断题自动判分；编程题逐题提交。" : "单选和判断题自动判分；编程题提交暂时关闭。"}</div>
           </div>
         </div>
       </aside>
@@ -453,6 +454,11 @@ function renderObjectiveQuestion(question) {
 }
 
 function renderProgramQuestion(question) {
+  const submitPanel = state.programSubmissionEnabled
+    ? `<textarea class="code-editor" id="code-${question.id}" spellcheck="false">${escapeHtml(defaultCode())}</textarea>
+        <div class="submit-row"><button class="primary-btn" type="button" data-run-code="${question.id}">提交代码</button></div>
+        <div class="score-box" id="result-${question.id}"><div class="muted">提交后会编译 C++，并运行样例与测试点。</div></div>`
+    : `<div class="score-box"><div class="muted">编程题提交暂时关闭，待运行沙箱配置完成后再开放。</div></div>`;
   return `
     <div class="program-grid">
       <div>
@@ -464,9 +470,7 @@ function renderProgramQuestion(question) {
         ${(question.samples || []).map((sample, index) => `<div class="sample"><strong>样例 #${index + 1}</strong><div>输入</div><pre>${escapeHtml(sample.input)}</pre><div>输出</div><pre>${escapeHtml(sample.output)}</pre></div>`).join("")}
       </div>
       <div>
-        <textarea class="code-editor" id="code-${question.id}" spellcheck="false">${escapeHtml(defaultCode())}</textarea>
-        <div class="submit-row"><button class="primary-btn" type="button" data-run-code="${question.id}">提交代码</button></div>
-        <div class="score-box" id="result-${question.id}"><div class="muted">提交后会编译 C++，并运行样例与测试点。</div></div>
+        ${submitPanel}
       </div>
     </div>
   `;
@@ -554,6 +558,10 @@ function applyObjectiveResult(details) {
 }
 
 async function submitCode(paperId, questionId) {
+  if (!state.programSubmissionEnabled) {
+    notify("编程题提交暂时关闭。");
+    return;
+  }
   if (!state.user) {
     openAuth();
     notify("请先登录再提交代码。");
@@ -909,7 +917,7 @@ function renderPaperBuilder(paper) {
         <label><span>月份</span><input id="paperMonthInput" value="${escapeHtml(paper.month || "06")}"></label>
         <label class="span-2"><span>说明</span><input id="paperSummaryInput" value="${escapeHtml(paper.summary || "")}"></label>
       </div>
-      <div class="builder-toolbar"><button class="secondary-btn" type="button" id="addSingle">添加单选题</button><button class="secondary-btn" type="button" id="addJudge">添加判断题</button><button class="secondary-btn" type="button" id="addProgram">添加编程题</button></div>
+      <div class="builder-toolbar"><button class="secondary-btn" type="button" id="addSingle">添加单选题</button><button class="secondary-btn" type="button" id="addJudge">添加判断题</button>${state.programSubmissionEnabled ? `<button class="secondary-btn" type="button" id="addProgram">添加编程题</button>` : ""}</div>
       <p class="builder-hint">题干、解析和编程题题面支持 Markdown，可直接粘贴 &#96;&#96;&#96;cpp 代码块。</p>
       <div class="builder-list">${questions.map((question, index) => renderBuilderQuestion(question, index)).join("") || `<div class="empty">还没有题目，先添加一题。</div>`}</div>
     </div>
@@ -1484,9 +1492,14 @@ async function refreshExamTypes() {
   state.examTypes = data.examTypes || [];
 }
 
+async function refreshAppConfig() {
+  const data = await api("/api/health");
+  state.programSubmissionEnabled = Boolean(data.programSubmissionEnabled);
+}
+
 async function init() {
   try {
-    await Promise.all([refreshExamTypes(), refreshPapers(), refreshMe()]);
+    await Promise.all([refreshAppConfig(), refreshExamTypes(), refreshPapers(), refreshMe()]);
   } catch (error) {
     app.innerHTML = `<div class="panel empty">启动失败：${escapeHtml(error.message)}</div>`;
     return;

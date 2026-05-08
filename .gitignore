@@ -10,6 +10,8 @@ pnpm-debug.log*
 
 cookies.txt
 *.log
+data/*.sqlite
+data/*.sqlite-*
 
 .DS_Store
 Thumbs.db
@@ -18,4 +20,3 @@ coverage/
 dist/
 tmp/
 temp/
-

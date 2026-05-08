@@ -4,6 +4,7 @@ const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
+const Database = require("better-sqlite3");
 const XLSX = require("xlsx");
 
 const ROOT = __dirname;
@@ -11,10 +12,12 @@ const PUBLIC_DIR = path.join(ROOT, "public");
 const MATHJAX_DIR = path.join(ROOT, "node_modules", "mathjax");
 const DATA_DIR = path.join(ROOT, "data");
 const DB_FILE = path.join(DATA_DIR, "db.json");
+const SQLITE_FILE = path.join(DATA_DIR, "runtime.sqlite");
 const PAPERS_FILE = path.join(DATA_DIR, "papers.json");
 const PORT = Number(process.env.PORT || 5173);
 const MAX_BODY = 1024 * 1024;
 const MAX_UPLOAD = 5 * 1024 * 1024;
+const PROGRAM_SUBMISSION_ENABLED = /^(1|true|yes)$/i.test(process.env.ENABLE_PROGRAM_SUBMISSION || "");
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -40,6 +43,47 @@ function readJson(file, fallback) {
 
 function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+let runtimeStore = null;
+
+function getRuntimeStore() {
+  if (runtimeStore) return runtimeStore;
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  runtimeStore = new Database(SQLITE_FILE);
+  runtimeStore.pragma("journal_mode = WAL");
+  runtimeStore.prepare(`
+    CREATE TABLE IF NOT EXISTS app_state (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    )
+  `).run();
+  return runtimeStore;
+}
+
+function loadRuntimeState() {
+  const store = getRuntimeStore();
+  const row = store.prepare("SELECT value FROM app_state WHERE key = ?").get("db");
+  if (row) return JSON.parse(row.value);
+  const imported = normalizeDb(readJson(DB_FILE, {}));
+  saveDb(imported);
+  return imported;
+}
+
+function saveRuntimeState(db) {
+  const store = getRuntimeStore();
+  store.prepare(`
+    INSERT INTO app_state (key, value, updatedAt)
+    VALUES (@key, @value, @updatedAt)
+    ON CONFLICT(key) DO UPDATE SET
+      value = excluded.value,
+      updatedAt = excluded.updatedAt
+  `).run({
+    key: "db",
+    value: JSON.stringify(db),
+    updatedAt: new Date().toISOString()
+  });
 }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
@@ -120,11 +164,11 @@ function seedUser(db, username, password, role) {
 }
 
 function loadDb() {
-  return normalizeDb(readJson(DB_FILE, {}));
+  return normalizeDb(loadRuntimeState());
 }
 
 function saveDb(db) {
-  writeJson(DB_FILE, db);
+  saveRuntimeState(normalizeDb(db));
 }
 
 function loadPapers() {
@@ -589,7 +633,7 @@ function buildStudentSummary(user, db, papers) {
         .filter((item) => item.type === "objective")
         .sort((a, b) => (b.score || 0) - (a.score || 0))[0];
       const programs = related.filter((item) => item.type === "program" && item.status === "accepted");
-      const programTotal = (paper?.questions || []).filter((item) => item.type === "program").length;
+      const programTotal = PROGRAM_SUBMISSION_ENABLED ? (paper?.questions || []).filter((item) => item.type === "program").length : 0;
       const objectiveDone = Boolean(objective);
       const programDone = programTotal === 0 || programs.length >= programTotal;
       return {
@@ -661,7 +705,8 @@ async function api(req, res) {
       ok: true,
       service: "csppractice",
       time: new Date().toISOString(),
-      papers: papers.length
+      papers: papers.length,
+      programSubmissionEnabled: PROGRAM_SUBMISSION_ENABLED
     });
   }
 
@@ -782,6 +827,9 @@ async function api(req, res) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/submit-code") {
+    if (!PROGRAM_SUBMISSION_ENABLED) {
+      return sendJson(res, 503, { message: "编程题提交暂时关闭，待运行沙箱配置完成后再开放。" });
+    }
     const user = requireUser(req, res, db);
     if (!user) return;
     const body = await readBody(req);

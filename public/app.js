@@ -933,6 +933,9 @@ async function renderManage() {
   document.querySelector("#hideSelectedPapers")?.addEventListener("click", () => setSelectedPapersVisibility(true));
   document.querySelector("#showSelectedPapers")?.addEventListener("click", () => setSelectedPapersVisibility(false));
   document.querySelector("#deleteSelectedPapers")?.addEventListener("click", deleteSelectedPapers);
+  document.querySelector("#exportSelectedPapers")?.addEventListener("click", () => exportPapersToWord(selectedPaperIds()));
+  document.querySelector("#exportFilteredPapers")?.addEventListener("click", () => exportPapersToWord(filteredManagePapers().map((paper) => paper.id)));
+  document.querySelector("#importWordPaperFile")?.addEventListener("change", importPapersFromWord);
   document.querySelector("#managePaperCategoryFilter")?.addEventListener("change", (event) => {
     state.manage.paperFilter.category = event.target.value;
     renderManage();
@@ -997,6 +1000,10 @@ function renderPaperListSection() {
           <label class="inline-check"><input id="selectAllPapers" type="checkbox">全选</label>
           <button class="secondary-btn" type="button" id="hideSelectedPapers">隐藏选中</button>
           <button class="secondary-btn" type="button" id="showSelectedPapers">显示选中</button>
+          <button class="secondary-btn" type="button" id="exportSelectedPapers">导出选中 Word</button>
+          <button class="secondary-btn" type="button" id="exportFilteredPapers">导出筛选结果</button>
+          <label class="secondary-btn file-action" for="importWordPaperFile">导入 Word</label>
+          <input id="importWordPaperFile" type="file" accept=".docx" hidden>
           <button class="danger-btn" type="button" id="deleteSelectedPapers">删除选中</button>
           <button class="primary-btn" type="button" id="newPaper">创建新试卷</button>
         </div>
@@ -1588,6 +1595,57 @@ function toggleAllPapers(event) {
 
 function selectedPaperIds() {
   return Array.from(document.querySelectorAll("[data-paper-select]:checked")).map((item) => item.dataset.paperSelect);
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function exportPapersToWord(ids) {
+  if (!ids.length) return notify("请先选择或筛选要导出的试卷。");
+  try {
+    const response = await fetch("/api/admin/papers/export-word", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids })
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.message || "导出失败。");
+    }
+    const blob = await response.blob();
+    downloadBlob(blob, `试卷导出-${new Date().toISOString().slice(0, 10)}.docx`);
+    notify(`已导出 ${ids.length} 套试卷。`);
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function importPapersFromWord(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+  const body = new FormData();
+  body.append("file", file);
+  try {
+    const response = await fetch("/api/admin/papers/import-word", { method: "POST", credentials: "include", body });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || "导入失败。");
+    await refreshPapers();
+    state.manage.editPaper = data.papers?.[0] || state.manage.editPaper;
+    notify(`导入完成：新增 ${data.created} 套，更新 ${data.updated} 套。`);
+    renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
 }
 
 async function setSelectedPapersVisibility(hidden) {

@@ -594,6 +594,13 @@ button {
   margin-bottom: 12px;
 }
 
+.file-action {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .paper-manage-list {
   display: grid;
   gap: 10px;

@@ -6,6 +6,8 @@ const crypto = require("crypto");
 const { spawn } = require("child_process");
 const Database = require("better-sqlite3");
 const XLSX = require("xlsx");
+const mammoth = require("mammoth");
+const { Document, Packer, Paragraph, TextRun, HeadingLevel } = require("docx");
 
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
@@ -16,7 +18,7 @@ const SQLITE_FILE = path.join(DATA_DIR, "runtime.sqlite");
 const PAPERS_FILE = path.join(DATA_DIR, "papers.json");
 const PORT = Number(process.env.PORT || 5173);
 const MAX_BODY = 1024 * 1024;
-const MAX_UPLOAD = 5 * 1024 * 1024;
+const MAX_UPLOAD = 20 * 1024 * 1024;
 const PROGRAM_SUBMISSION_ENABLED = /^(1|true|yes)$/i.test(process.env.ENABLE_PROGRAM_SUBMISSION || "");
 
 const contentTypes = {
@@ -669,6 +671,222 @@ function updatePapersVisibility(req, res, db, papers, user, ids, hidden) {
   });
 }
 
+const questionTypeLabels = {
+  single: "单选题",
+  multi: "多选题",
+  judge: "判断题",
+  reading: "阅读程序题",
+  completion: "完善程序题",
+  program: "编程题"
+};
+
+const labelQuestionTypes = Object.fromEntries(Object.entries(questionTypeLabels).map(([key, value]) => [value, key]));
+
+function paperExportRows(paper) {
+  const rows = [
+    ["试卷ID", paper.id],
+    ["标题", paper.title],
+    ["考试类型", paper.category || "gesp"],
+    ["等级", paper.level ?? ""],
+    ["语言", paper.language || "C++"],
+    ["年份", paper.year || ""],
+    ["月份", paper.month || ""],
+    ["说明", paper.summary || ""]
+  ];
+  const children = [
+    new Paragraph({ text: "试卷信息", heading: HeadingLevel.HEADING_1 }),
+    ...rows.map(([label, value]) => new Paragraph({ children: [new TextRun({ text: `${label}: `, bold: true }), new TextRun(String(value ?? ""))] })),
+    new Paragraph({ text: "题目列表", heading: HeadingLevel.HEADING_1 })
+  ];
+  (paper.questions || []).forEach((question, index) => {
+    children.push(...questionToWordParagraphs(question, index + 1));
+  });
+  return children;
+}
+
+function addLabelParagraph(items, label, value = "") {
+  items.push(new Paragraph({ children: [new TextRun({ text: `${label}: `, bold: true }), new TextRun(String(value ?? ""))] }));
+}
+
+function addTextBlock(items, label, value = "") {
+  items.push(new Paragraph({ children: [new TextRun({ text: `${label}:`, bold: true })] }));
+  String(value || "").split(/\r?\n/).forEach((line) => items.push(new Paragraph(line || " ")));
+}
+
+function questionToWordParagraphs(question, number, prefix = "题目") {
+  const items = [
+    new Paragraph({ text: `--- ${prefix} ${number} ---`, heading: prefix === "子题" ? HeadingLevel.HEADING_3 : HeadingLevel.HEADING_2 })
+  ];
+  addLabelParagraph(items, "题型", questionTypeLabels[question.type] || question.type || "单选题");
+  addLabelParagraph(items, "题目ID", question.id || "");
+  addLabelParagraph(items, "分值", question.score ?? 0);
+  if (question.type === "reading" || question.type === "completion") {
+    addLabelParagraph(items, "标题", question.title || "");
+    addTextBlock(items, "题面", question.statement || "");
+    addTextBlock(items, "程序代码", question.code || "");
+    (question.subquestions || []).forEach((subquestion, index) => {
+      items.push(...questionToWordParagraphs(subquestion, index + 1, "子题"));
+    });
+    return items;
+  }
+  if (question.type === "program") {
+    addLabelParagraph(items, "标题", question.title || "");
+    addTextBlock(items, "题面", question.statement || "");
+    addTextBlock(items, "输入格式", question.input || "");
+    addTextBlock(items, "输出格式", question.output || "");
+    addTextBlock(items, "样例", formatWordCases(question.samples || []));
+    addTextBlock(items, "隐藏测试点", formatWordCases(question.tests || []));
+    return items;
+  }
+  addTextBlock(items, "题干", question.stem || "");
+  if (question.type === "single" || question.type === "multi") {
+    items.push(new Paragraph({ children: [new TextRun({ text: "选项:", bold: true })] }));
+    (question.choices || []).forEach((choice, index) => items.push(new Paragraph(`${String.fromCharCode(65 + index)}. ${choice}`)));
+  }
+  addLabelParagraph(items, "答案", formatWordAnswer(question));
+  addTextBlock(items, "解析", question.explanation || "");
+  return items;
+}
+
+function formatWordAnswer(question) {
+  if (question.type === "judge") return question.answer ? "正确" : "错误";
+  if (question.type === "multi") return (question.answer || []).map((index) => String.fromCharCode(65 + Number(index))).join(", ");
+  if (question.type === "single") return String.fromCharCode(65 + Number(question.answer || 0));
+  return "";
+}
+
+function formatWordCases(cases) {
+  return (cases || []).map((item, index) => `样例${index + 1}\n输入:\n${item.input || ""}\n输出:\n${item.output || ""}`).join("\n---\n");
+}
+
+async function buildPapersDocxBuffer(papers) {
+  const children = [
+    new Paragraph({ text: "CSP Practice 试卷导出", heading: HeadingLevel.TITLE }),
+    new Paragraph("说明：可在 Word 中编辑后重新导入。请尽量保留“试卷ID:”“题型:”“题干:”等标签。")
+  ];
+  papers.forEach((paper, index) => {
+    if (index > 0) children.push(new Paragraph({ text: "=== 下一套试卷 ===", heading: HeadingLevel.HEADING_1 }));
+    children.push(...paperExportRows(paper));
+  });
+  const doc = new Document({ sections: [{ properties: {}, children }] });
+  return Packer.toBuffer(doc);
+}
+
+function parseWordAnswer(type, value) {
+  const text = String(value || "").trim();
+  if (type === "judge") return /^(正确|对|true|yes|1)$/i.test(text);
+  const letters = text.split(/[,，、\s]+/).map((item) => item.trim()).filter(Boolean);
+  const indexes = letters.map((item) => {
+    if (/^\d+$/.test(item)) return Number(item) - 1;
+    return item.toUpperCase().charCodeAt(0) - 65;
+  }).filter((item) => Number.isInteger(item) && item >= 0);
+  return type === "multi" ? indexes : (indexes[0] ?? 0);
+}
+
+function readTaggedBlock(lines, startIndex, stopLabels) {
+  const values = [];
+  let index = startIndex;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (/^---\s*(题目|子题)\s+\d+\s*---$/.test(line) || /^===\s*下一套试卷\s*===$/.test(line) || stopLabels.some((label) => line.startsWith(`${label}:`))) break;
+    values.push(line);
+    index += 1;
+  }
+  return { value: values.join("\n").trim(), nextIndex: index };
+}
+
+function lineValue(line, label) {
+  return line.startsWith(`${label}:`) ? line.slice(label.length + 1).trim() : "";
+}
+
+function parseWordPapersText(text, db) {
+  const lines = String(text || "").replace(/\r/g, "").split("\n").map((line) => line.trim()).filter((line) => line.length);
+  const papers = [];
+  let current = null;
+  const topLabels = ["试卷ID", "标题", "考试类型", "等级", "语言", "年份", "月份", "说明"];
+  const questionLabels = ["题型", "题目ID", "分值", "标题", "题干", "选项", "答案", "解析", "题面", "程序代码", "输入格式", "输出格式", "样例", "隐藏测试点"];
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (line.startsWith("试卷ID:")) {
+      if (current) papers.push(current);
+      current = { id: lineValue(line, "试卷ID"), questions: [] };
+      continue;
+    }
+    if (!current) continue;
+    const topLabel = topLabels.find((label) => line.startsWith(`${label}:`));
+    if (topLabel) {
+      const keyMap = { 标题: "title", 考试类型: "category", 等级: "level", 语言: "language", 年份: "year", 月份: "month", 说明: "summary" };
+      if (keyMap[topLabel]) current[keyMap[topLabel]] = lineValue(line, topLabel);
+      continue;
+    }
+    if (/^---\s*题目\s+\d+\s*---$/.test(line)) {
+      const parsed = parseWordQuestion(lines, i + 1, false, questionLabels);
+      current.questions.push(parsed.question);
+      i = parsed.nextIndex - 1;
+    }
+  }
+  if (current) papers.push(current);
+  return papers.map((paper) => validatePaper(paper, db));
+}
+
+function parseWordQuestion(lines, startIndex, subquestion, questionLabels) {
+  const question = {};
+  let i = startIndex;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^---\s*题目\s+\d+\s*---$/.test(line) || /^===\s*下一套试卷\s*===$/.test(line)) break;
+    if (subquestion && /^---\s*子题\s+\d+\s*---$/.test(line)) break;
+    if (line.startsWith("题型:")) question.type = labelQuestionTypes[lineValue(line, "题型")] || lineValue(line, "题型") || "single";
+    else if (line.startsWith("题目ID:")) question.id = lineValue(line, "题目ID");
+    else if (line.startsWith("分值:")) question.score = Number(lineValue(line, "分值") || 0);
+    else if (line.startsWith("标题:")) question.title = lineValue(line, "标题");
+    else if (line.startsWith("题干:")) {
+      const block = readTaggedBlock(lines, i + 1, questionLabels);
+      question.stem = block.value;
+      i = block.nextIndex - 1;
+    } else if (line.startsWith("题面:")) {
+      const block = readTaggedBlock(lines, i + 1, questionLabels);
+      question.statement = block.value;
+      i = block.nextIndex - 1;
+    } else if (line.startsWith("程序代码:")) {
+      const block = readTaggedBlock(lines, i + 1, questionLabels);
+      question.code = block.value;
+      i = block.nextIndex - 1;
+    } else if (line.startsWith("输入格式:")) {
+      const block = readTaggedBlock(lines, i + 1, questionLabels);
+      question.input = block.value;
+      i = block.nextIndex - 1;
+    } else if (line.startsWith("输出格式:")) {
+      const block = readTaggedBlock(lines, i + 1, questionLabels);
+      question.output = block.value;
+      i = block.nextIndex - 1;
+    } else if (line.startsWith("解析:")) {
+      const block = readTaggedBlock(lines, i + 1, questionLabels);
+      question.explanation = block.value;
+      i = block.nextIndex - 1;
+    } else if (line.startsWith("选项:")) {
+      const choices = [];
+      i += 1;
+      while (i < lines.length && /^[A-Z]\.\s*/.test(lines[i])) {
+        choices.push(lines[i].replace(/^[A-Z]\.\s*/, ""));
+        i += 1;
+      }
+      question.choices = choices;
+      i -= 1;
+    } else if (line.startsWith("答案:")) {
+      question.answer = parseWordAnswer(question.type || "single", lineValue(line, "答案"));
+    } else if (/^---\s*子题\s+\d+\s*---$/.test(line)) {
+      question.subquestions ||= [];
+      const parsed = parseWordQuestion(lines, i + 1, true, questionLabels);
+      question.subquestions.push(parsed.question);
+      i = parsed.nextIndex - 1;
+    }
+    i += 1;
+  }
+  question.type ||= "single";
+  return { question, nextIndex: i };
+}
+
 function isPaperHidden(db, paper) {
   if (!paper) return false;
   if (Object.prototype.hasOwnProperty.call(db.paperVisibility || {}, paper.id)) {
@@ -1039,6 +1257,55 @@ async function api(req, res) {
     const user = requireTeacher(req, res, db);
     if (!user) return;
     return sendJson(res, 200, { papers: papers.map((paper) => paperWithVisibility(db, paper)) });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/admin/papers/export-word") {
+    const user = requireTeacher(req, res, db);
+    if (!user) return;
+    const body = await readBody(req);
+    const ids = Array.isArray(body.ids) ? body.ids.map((id) => String(id || "")) : [];
+    const selected = ids.length ? papers.filter((paper) => ids.includes(paper.id)) : papers;
+    if (!selected.length) return sendJson(res, 400, { message: "请先选择要导出的试卷。" });
+    const buffer = await buildPapersDocxBuffer(selected);
+    const filename = encodeURIComponent(`试卷导出-${new Date().toISOString().slice(0, 10)}.docx`);
+    audit(db, user, "paper:export-word", selected.map((paper) => paper.id).join(","));
+    saveDb(db);
+    res.writeHead(200, {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "Content-Disposition": `attachment; filename*=UTF-8''${filename}`,
+      "Content-Length": buffer.length
+    });
+    res.end(buffer);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/admin/papers/import-word") {
+    const user = requireTeacher(req, res, db);
+    if (!user) return;
+    const upload = parseMultipart(req, await readRawBody(req));
+    const file = upload.files.file;
+    if (!file?.content?.length) return sendJson(res, 400, { message: "请上传 Word .docx 文件。" });
+    const extracted = await mammoth.extractRawText({ buffer: file.content });
+    const imported = parseWordPapersText(extracted.value, db);
+    if (!imported.length) return sendJson(res, 400, { message: "没有从 Word 中识别到试卷，请使用系统导出的 Word 模板格式。" });
+    const now = new Date().toISOString();
+    let created = 0;
+    let updated = 0;
+    imported.forEach((paper) => {
+      const index = papers.findIndex((item) => item.id === paper.id);
+      if (index >= 0) {
+        papers[index] = { ...papers[index], ...paper, updatedBy: user.id, updatedAt: now };
+        updated += 1;
+        audit(db, user, "paper:import-update", paper.id);
+      } else {
+        papers.unshift({ ...paper, createdBy: user.id, createdAt: now, updatedBy: user.id, updatedAt: now });
+        created += 1;
+        audit(db, user, "paper:import-create", paper.id);
+      }
+    });
+    savePapers(papers);
+    saveDb(db);
+    return sendJson(res, 200, { total: imported.length, created, updated, papers: imported.map((paper) => paperWithVisibility(db, paper)) });
   }
 
   if (req.method === "POST" && url.pathname === "/api/admin/papers") {

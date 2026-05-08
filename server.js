@@ -409,6 +409,7 @@ function flattenObjectiveQuestions(questions, parent = null) {
 }
 
 function normalizeAnswerValue(question, value) {
+  if (value === undefined || value === null) return undefined;
   if (question.type === "judge") return value === true || value === "true";
   if (question.type === "multi") {
     const values = Array.isArray(value) ? value : [value].filter((item) => item !== undefined);
@@ -418,6 +419,7 @@ function normalizeAnswerValue(question, value) {
 }
 
 function answersEqual(question, userAnswer) {
+  if (userAnswer === undefined) return false;
   if (question.type !== "multi") return userAnswer === question.answer;
   const answer = (Array.isArray(question.answer) ? question.answer : []).map(Number).sort((a, b) => a - b);
   return answer.length === userAnswer.length && answer.every((value, index) => value === userAnswer[index]);

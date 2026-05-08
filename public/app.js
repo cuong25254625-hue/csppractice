@@ -7,7 +7,7 @@ const state = {
   authMode: "login",
   filters: { category: "all", level: "all", keyword: "" },
   programSubmissionEnabled: false,
-  manage: { papers: [], overview: null, users: [], editPaper: null, classReport: null, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" } }
+  manage: { papers: [], overview: null, users: [], students: [], editPaper: null, classReport: null, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" } }
 };
 
 const app = document.querySelector("#app");
@@ -23,7 +23,15 @@ const closeAuth = document.querySelector("#closeAuth");
 const toast = document.querySelector("#toast");
 const accountMenu = document.querySelector("#accountMenu");
 const accountManageLink = document.querySelector("#accountManageLink");
+const changePasswordButton = document.querySelector("#changePasswordButton");
 const logoutButton = document.querySelector("#logoutButton");
+const passwordDialog = document.querySelector("#passwordDialog");
+const currentPassword = document.querySelector("#currentPassword");
+const newPassword = document.querySelector("#newPassword");
+const confirmNewPassword = document.querySelector("#confirmNewPassword");
+const savePassword = document.querySelector("#savePassword");
+const closePasswordDialog = document.querySelector("#closePasswordDialog");
+const cancelPasswordDialog = document.querySelector("#cancelPasswordDialog");
 const codeInsertDialog = document.querySelector("#codeInsertDialog");
 const codeLanguageInput = document.querySelector("#codeLanguageInput");
 const codeSnippetInput = document.querySelector("#codeSnippetInput");
@@ -184,7 +192,7 @@ function route() {
   if (hash.startsWith("#/paper/")) renderPaper(decodeURIComponent(hash.replace("#/paper/", "")));
   else if (hash === "#/dashboard") renderDashboard();
   else if (hash === "#/study") renderStudy();
-  else if (hash === "#/classes") renderClasses();
+  else if (hash === "#/classes" || hash.startsWith("#/classes/")) renderClasses();
   else if (hash === "#/manage") renderManage();
   else renderHome();
   window.setTimeout(() => typesetMath(app), 0);
@@ -824,16 +832,26 @@ async function renderClasses() {
   } catch (error) {
     notify(error.message);
   }
+  const selectedId = (location.hash || "").startsWith("#/classes/") ? decodeURIComponent((location.hash || "").replace("#/classes/", "")) : "";
+  const selectedClass = selectedId ? state.classes.find((klass) => klass.id === selectedId) || null : null;
+  const classAssignments = selectedClass ? (data.assignments || []).filter((item) => item.classId === selectedClass.id) : [];
   app.innerHTML = `
     <div class="grid">
       <section class="panel">
         <div class="panel-head"><h1>我的班级</h1><span class="muted">${state.classes.length} 个班级</span></div>
         <div class="panel-body">
           <div class="form-grid"><input id="joinCode" placeholder="输入教师给的邀请码"><button class="primary-btn" type="button" id="joinClass">加入班级</button></div>
-          <ul class="paper-list" style="margin-top: 14px;">${state.classes.map((klass) => `<li class="paper-item"><span class="paper-icon">${examTypeById(klass.category).levelEnabled ? `${klass.level}级` : "初赛"}</span><div><h3>${escapeHtml(klass.name)}</h3><div class="meta"><span>${escapeHtml(klass.categoryName || categoryName(klass.category))}</span><span>教师 ${escapeHtml(klass.teacherName)}</span><span>学生 ${klass.studentCount}</span><span>作业 ${klass.assignmentCount}</span><span>邀请码 ${escapeHtml(klass.inviteCode)}</span></div></div></li>`).join("") || `<li class="empty">还没有加入班级</li>`}</ul>
+          <ul class="paper-list" style="margin-top: 14px;">${state.classes.map((klass) => `<li class="paper-item ${selectedClass?.id === klass.id ? "active" : ""}"><span class="paper-icon">${examTypeById(klass.category).levelEnabled ? `${klass.level}级` : "初赛"}</span><div><h3><a href="#/classes/${encodeURIComponent(klass.id)}">${escapeHtml(klass.name)}</a></h3><div class="meta"><span>${escapeHtml(klass.categoryName || categoryName(klass.category))}</span><span>教师 ${escapeHtml(klass.teacherName)}</span><span>学生 ${klass.studentCount}</span><span>作业 ${klass.assignmentCount}</span></div></div><a class="secondary-btn" href="#/classes/${encodeURIComponent(klass.id)}">查看作业</a></li>`).join("") || `<li class="empty">还没有加入班级</li>`}</ul>
         </div>
       </section>
-      <aside class="side-stack"><div class="panel"><div class="panel-head"><h2>班级作业</h2></div><div class="panel-body"><ul class="mini-list">${(data.assignments || []).map((item) => `<li><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a><span class="muted">${escapeHtml(item.dueAt || "长期")}</span></li>`).join("") || `<li class="muted">暂无作业</li>`}</ul></div></div></aside>
+      <aside class="side-stack">
+        <div class="panel">
+          <div class="panel-head"><h2>${selectedClass ? `${escapeHtml(selectedClass.name)}作业` : "班级作业"}</h2><span class="muted">${classAssignments.length} 项</span></div>
+          <div class="panel-body">
+            ${selectedClass ? `<ul class="mini-list">${classAssignments.map((item) => `<li><span><a href="#/paper/${item.paperId}">${escapeHtml(item.paperTitle || item.title)}</a><div class="muted">${item.dueAt ? `截止 ${escapeHtml(item.dueAt)}` : "长期"}</div></span><a class="primary-btn" href="#/paper/${item.paperId}">去完成</a></li>`).join("") || `<li class="muted">这个班级还没有发布作业</li>`}</ul>` : `<p class="muted">选择一个班级后查看作业。</p>`}
+          </div>
+        </div>
+      </aside>
     </div>
   `;
   document.querySelector("#joinClass").addEventListener("click", joinClass);
@@ -856,14 +874,16 @@ async function renderManage() {
     return;
   }
   try {
-    const [overview, paperData, users] = await Promise.all([
+    const [overview, paperData, users, studentData] = await Promise.all([
       api("/api/teacher/overview"),
       api("/api/admin/papers"),
-      isAdmin() ? api("/api/admin/users") : Promise.resolve({ users: [] })
+      isAdmin() ? api("/api/admin/users") : Promise.resolve({ users: [] }),
+      api("/api/teacher/students")
     ]);
     state.manage.overview = overview;
     state.manage.papers = paperData.papers || [];
     state.manage.users = users.users || [];
+    state.manage.students = studentData.students || [];
   } catch (error) {
     notify(error.message);
   }
@@ -937,8 +957,13 @@ async function renderManage() {
   updateClassLevelVisibility();
   document.querySelectorAll("[data-class-report]").forEach((button) => button.addEventListener("click", () => loadClassReport(button.dataset.classReport)));
   document.querySelector("#createAssignment")?.addEventListener("click", createAssignment);
+  document.querySelector("#addSelectedStudents")?.addEventListener("click", () => addStudentsToActiveClass(false));
+  document.querySelector("#addAllStudents")?.addEventListener("click", () => addStudentsToActiveClass(true));
   document.querySelector("#createUser")?.addEventListener("click", createUser);
   document.querySelector("#importUsers")?.addEventListener("click", importUsersFromExcel);
+  document.querySelector("#newRole")?.addEventListener("change", updateUserTeacherField);
+  document.querySelector("#bulkRole")?.addEventListener("change", updateUserTeacherField);
+  updateUserTeacherField();
   document.querySelector("#saveExamType")?.addEventListener("click", saveExamType);
   document.querySelectorAll("[data-delete-exam-type]").forEach((button) => button.addEventListener("click", () => deleteExamType(button.dataset.deleteExamType)));
   typesetMath(app);
@@ -1042,8 +1067,25 @@ function renderManageClassesSection(overview) {
         </div>
       </div>
       <div class="side-stack">
+        ${renderAssignmentPublisher(classes)}
         ${renderClassReport()}
-        <div class="panel"><div class="panel-head"><h2>发布作业</h2></div><div class="panel-body"><div class="stack-form"><select id="assignmentClass">${classes.map((klass) => `<option value="${klass.id}">${escapeHtml(klass.name)}</option>`).join("")}</select><select id="assignmentPaper">${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}</select><input id="assignmentDue" type="date"><button class="primary-btn" type="button" id="createAssignment">发布作业</button></div></div></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAssignmentPublisher(classes) {
+  const activeClassId = state.manage.classReport?.class?.id || classes[0]?.id || "";
+  return `
+    <div class="panel action-panel">
+      <div class="panel-head"><h2>发布作业</h2></div>
+      <div class="panel-body">
+        <div class="stack-form">
+          <select id="assignmentClass">${classes.map((klass) => `<option value="${klass.id}" ${activeClassId === klass.id ? "selected" : ""}>${escapeHtml(klass.name)}</option>`).join("")}</select>
+          <select id="assignmentPaper">${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}</select>
+          <input id="assignmentDue" type="date">
+          <button class="primary-btn" type="button" id="createAssignment">发布作业</button>
+        </div>
       </div>
     </div>
   `;
@@ -1609,6 +1651,7 @@ function renderClassReport() {
           ${statCard("作业", assignments.length)}
           ${statCard("答题", totalAttempts)}
         </div>
+        ${renderClassStudentAdder(klass)}
         <h3 class="subhead">学生练习数据</h3>
         <table class="report-table">
           <thead><tr><th>学生</th><th>练习</th><th>客观题最好成绩</th><th>编程通过</th></tr></thead>
@@ -1620,6 +1663,22 @@ function renderClassReport() {
         <ul class="mini-list">${assignments.map((item) => `<li><span>${escapeHtml(item.paperTitle || item.title)}<div class="muted">${item.dueAt ? `截止 ${escapeHtml(item.dueAt)}` : "未设置截止日期"}</div></span></li>`).join("") || `<li class="muted">暂无作业</li>`}</ul>
         <h3 class="subhead">最近答题</h3>
         <ul class="mini-list">${attempts.slice(0, 6).map((item) => `<li><span>${escapeHtml(item.username || "")}<div class="muted">${escapeHtml(item.paperTitle || item.questionTitle || "")}</div></span><span class="muted">${item.type === "objective" ? `${item.score}/${item.fullScore}` : `${item.passed || 0}/${item.total || 0}`}</span></li>`).join("") || `<li class="muted">暂无答题记录</li>`}</ul>
+      </div>
+    </div>
+  `;
+}
+
+function renderClassStudentAdder(klass) {
+  const candidates = (state.manage.students || []).filter((student) => !(student.enrolledClassIds || []).includes(klass.id));
+  return `
+    <div class="class-student-adder">
+      <h3 class="subhead">添加学生到班级</h3>
+      <div class="student-pick-list">
+        ${candidates.map((student) => `<label class="inline-check"><input type="checkbox" data-student-add="${student.id}"><span>${escapeHtml(student.username)}${student.teacherName ? `<small>${escapeHtml(student.teacherName)}</small>` : ""}</span></label>`).join("") || `<div class="muted">暂无可添加学生。</div>`}
+      </div>
+      <div class="submit-row">
+        <button class="secondary-btn" type="button" id="addSelectedStudents" ${candidates.length ? "" : "disabled"}>添加选中学生</button>
+        <button class="primary-btn" type="button" id="addAllStudents" ${candidates.length ? "" : "disabled"}>添加全部可选学生</button>
       </div>
     </div>
   `;
@@ -1706,6 +1765,9 @@ async function createAssignment() {
   if (!classId || !paperId) return notify("请先选择班级和试卷。");
   try {
     await api(`/api/classes/${encodeURIComponent(classId)}/assignments`, { method: "POST", body: { paperId, dueAt: document.querySelector("#assignmentDue").value } });
+    if (state.manage.classReport?.class?.id === classId) {
+      state.manage.classReport = await api(`/api/classes/${encodeURIComponent(classId)}/report`);
+    }
     notify("作业已发布。");
     renderManage();
   } catch (error) {
@@ -1713,7 +1775,27 @@ async function createAssignment() {
   }
 }
 
+async function addStudentsToActiveClass(all) {
+  const classId = state.manage.classReport?.class?.id;
+  if (!classId) return notify("请先打开一个班级的学情。");
+  const candidates = (state.manage.students || []).filter((student) => !(student.enrolledClassIds || []).includes(classId));
+  const selectedIds = all
+    ? candidates.map((student) => student.id)
+    : Array.from(document.querySelectorAll("[data-student-add]:checked")).map((input) => input.dataset.studentAdd);
+  if (!selectedIds.length) return notify("请先选择学生。");
+  try {
+    const data = await api(`/api/classes/${encodeURIComponent(classId)}/students`, { method: "POST", body: { studentIds: selectedIds } });
+    notify(`已添加 ${data.added} 名学生。`);
+    state.manage.classReport = await api(`/api/classes/${encodeURIComponent(classId)}/report`);
+    renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
 function renderUserAdmin() {
+  const teachers = state.manage.users.filter((user) => user.role === "teacher" || user.role === "admin");
+  const teacherOptions = `<option value="">不绑定老师</option>${teachers.map((teacher) => `<option value="${teacher.id}">${escapeHtml(teacher.username)} · ${roleName(teacher.role)}</option>`).join("")}`;
   return `
     <div class="panel">
       <div class="panel-head"><h2>用户管理</h2><span class="muted">${state.manage.users.length} 个账号</span></div>
@@ -1723,20 +1805,31 @@ function renderUserAdmin() {
           <input id="newUsername" placeholder="新账号">
           <input id="newPassword" type="password" placeholder="初始密码">
           <select id="newRole"><option value="student">学生</option><option value="teacher">教师</option><option value="admin">管理员</option></select>
+          <select id="newStudentTeacher">${teacherOptions}</select>
           <button class="primary-btn" type="button" id="createUser">创建用户</button>
         </div>
         <h3 class="subhead">Excel 批量导入</h3>
         <div class="bulk-import-box">
           <select id="bulkRole"><option value="student">创建为学生账号</option><option value="teacher">创建为教师账号</option></select>
+          <select id="bulkStudentTeacher">${teacherOptions}</select>
           <input id="bulkUserFile" type="file" accept=".xlsx,.xls,.csv">
           <button class="primary-btn" type="button" id="importUsers">上传并创建</button>
         </div>
         <p class="muted import-hint">Excel 第一行表头包含“用户名”和“密码”即可；也支持 username/password。</p>
         ${renderImportResult()}
-        <ul class="mini-list" style="margin-top: 12px;">${state.manage.users.slice(0, 8).map((user) => `<li><span>${escapeHtml(user.username)}<div class="muted">${roleName(user.role)}</div></span><span class="muted">${user.attemptCount} 次</span></li>`).join("")}</ul>
+        <ul class="mini-list" style="margin-top: 12px;">${state.manage.users.slice(0, 8).map((user) => `<li><span>${escapeHtml(user.username)}<div class="muted">${roleName(user.role)}${user.teacherName ? ` · ${escapeHtml(user.teacherName)}` : ""}</div></span><span class="muted">${user.attemptCount} 次</span></li>`).join("")}</ul>
       </div>
     </div>
   `;
+}
+
+function updateUserTeacherField() {
+  const newRole = document.querySelector("#newRole");
+  const newStudentTeacher = document.querySelector("#newStudentTeacher");
+  if (newRole && newStudentTeacher) newStudentTeacher.hidden = newRole.value !== "student";
+  const bulkRole = document.querySelector("#bulkRole");
+  const bulkStudentTeacher = document.querySelector("#bulkStudentTeacher");
+  if (bulkRole && bulkStudentTeacher) bulkStudentTeacher.hidden = bulkRole.value !== "student";
 }
 
 function renderImportResult() {
@@ -1754,7 +1847,15 @@ function renderImportResult() {
 
 async function createUser() {
   try {
-    await api("/api/admin/users", { method: "POST", body: { username: document.querySelector("#newUsername").value, password: document.querySelector("#newPassword").value, role: document.querySelector("#newRole").value } });
+    await api("/api/admin/users", {
+      method: "POST",
+      body: {
+        username: document.querySelector("#newUsername").value,
+        password: document.querySelector("#newPassword").value,
+        role: document.querySelector("#newRole").value,
+        teacherId: document.querySelector("#newStudentTeacher")?.value || ""
+      }
+    });
     notify("用户已创建。");
     renderManage();
   } catch (error) {
@@ -1768,6 +1869,7 @@ async function importUsersFromExcel() {
   if (!file) return notify("请先选择 Excel 文件。");
   const body = new FormData();
   body.append("role", document.querySelector("#bulkRole").value);
+  body.append("teacherId", document.querySelector("#bulkStudentTeacher")?.value || "");
   body.append("file", file);
   try {
     const response = await fetch("/api/admin/users/import", { method: "POST", credentials: "include", body });
@@ -1823,6 +1925,28 @@ async function logout() {
   updateAuthButton();
   route();
   notify("已退出登录。");
+}
+
+function openPasswordDialog() {
+  closeAccountMenu();
+  currentPassword.value = "";
+  newPassword.value = "";
+  confirmNewPassword.value = "";
+  passwordDialog.showModal();
+  currentPassword.focus();
+}
+
+async function changePassword() {
+  const next = newPassword.value;
+  if (next.length < 6) return notify("新密码至少 6 位。");
+  if (next !== confirmNewPassword.value) return notify("两次输入的新密码不一致。");
+  try {
+    await api("/api/me/password", { method: "POST", body: { currentPassword: currentPassword.value, newPassword: next } });
+    passwordDialog.close();
+    notify("密码已修改。");
+  } catch (error) {
+    notify(error.message);
+  }
 }
 
 function closeAccountMenu() {
@@ -1881,6 +2005,7 @@ async function init() {
 }
 
 authButton.addEventListener("click", toggleAccountMenu);
+changePasswordButton.addEventListener("click", openPasswordDialog);
 logoutButton.addEventListener("click", logout);
 accountMenu.addEventListener("click", (event) => {
   if (event.target.closest("a")) closeAccountMenu();
@@ -1889,6 +2014,9 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest(".account-menu")) closeAccountMenu();
 });
 closeAuth.addEventListener("click", () => authDialog.close());
+savePassword.addEventListener("click", changePassword);
+closePasswordDialog.addEventListener("click", () => passwordDialog.close());
+cancelPasswordDialog.addEventListener("click", () => passwordDialog.close());
 toggleAuth.addEventListener("click", () => {
   state.authMode = state.authMode === "login" ? "register" : "login";
   renderAuthMode();

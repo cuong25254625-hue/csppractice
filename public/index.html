@@ -70,6 +70,7 @@
             <div class="account-dropdown" id="accountMenu" hidden>
               <a href="#/study" id="accountStudyLink">个人学习</a>
               <a href="#/manage" id="accountManageLink" data-link="manage" hidden>管理后台</a>
+              <button type="button" id="changePasswordButton">修改密码</button>
               <button type="button" id="logoutButton">退出登录</button>
             </div>
           </div>
@@ -103,6 +104,34 @@
         <div class="auth-actions">
           <button class="primary-btn" type="button" id="submitAuth">登录</button>
           <button class="link-btn" type="button" id="toggleAuth">创建账号</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="auth-dialog" id="passwordDialog">
+      <form class="auth-box" method="dialog">
+        <div class="dialog-head">
+          <div>
+            <h2>修改密码</h2>
+            <p>请输入当前密码，并设置一个新的登录密码。</p>
+          </div>
+          <button class="icon-btn" type="button" id="closePasswordDialog" aria-label="关闭">×</button>
+        </div>
+        <label>
+          <span>当前密码</span>
+          <input id="currentPassword" type="password" autocomplete="current-password">
+        </label>
+        <label>
+          <span>新密码</span>
+          <input id="newPassword" type="password" autocomplete="new-password" placeholder="至少 6 位">
+        </label>
+        <label>
+          <span>确认新密码</span>
+          <input id="confirmNewPassword" type="password" autocomplete="new-password">
+        </label>
+        <div class="auth-actions">
+          <button class="primary-btn" type="button" id="savePassword">保存密码</button>
+          <button class="secondary-btn" type="button" id="cancelPasswordDialog">取消</button>
         </div>
       </form>
     </dialog>

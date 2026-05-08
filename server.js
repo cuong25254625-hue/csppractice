@@ -111,6 +111,7 @@ function normalizeDb(db) {
     user.role ||= "student";
     user.status ||= "active";
     user.createdAt ||= new Date().toISOString();
+    if (user.role !== "student") delete user.teacherId;
   });
 
   seedUser(db, "admin", "admin123", "admin");
@@ -201,15 +202,21 @@ function currentUser(req, db) {
   return user;
 }
 
-function publicUser(user) {
+function publicUser(user, db = null) {
   if (!user) return null;
-  return {
+  const visible = {
     id: user.id,
     username: user.username,
     role: user.role,
     status: user.status,
     createdAt: user.createdAt
   };
+  if (user.role === "student" && user.teacherId) {
+    const teacher = db?.users?.find((item) => item.id === user.teacherId);
+    visible.teacherId = user.teacherId;
+    visible.teacherName = teacher?.username || "";
+  }
+  return visible;
 }
 
 function publicExamType(type) {
@@ -340,7 +347,14 @@ function userValidationError(username, password) {
   return "";
 }
 
-function createUserRecord(db, username, password, role) {
+function normalizeStudentTeacherId(db, teacherId) {
+  const id = String(teacherId || "").trim();
+  if (!id) return "";
+  const teacher = db.users.find((user) => user.id === id && (user.role === "teacher" || user.role === "admin") && user.status !== "disabled");
+  return teacher ? teacher.id : "";
+}
+
+function createUserRecord(db, username, password, role, teacherId = "") {
   const { salt, hash } = hashPassword(password);
   const newUser = {
     id: crypto.randomUUID(),
@@ -351,6 +365,7 @@ function createUserRecord(db, username, password, role) {
     passwordHash: hash,
     createdAt: new Date().toISOString()
   };
+  if (role === "student") newUser.teacherId = normalizeStudentTeacherId(db, teacherId);
   db.users.push(newUser);
   return newUser;
 }
@@ -677,13 +692,19 @@ function canAccessClass(user, klass, db) {
   return db.enrollments.some((item) => item.classId === klass.id && item.userId === user.id);
 }
 
-function classPayload(klass, db) {
+function canManageClass(user, klass) {
+  return Boolean(klass && (isAdmin(user) || klass.teacherId === user.id));
+}
+
+function classPayload(klass, db, viewer = null) {
   const teacher = db.users.find((user) => user.id === klass.teacherId);
   const studentCount = db.enrollments.filter((item) => item.classId === klass.id).length;
   const assignmentCount = db.assignments.filter((item) => item.classId === klass.id).length;
   const examType = db.examTypes.find((item) => item.id === klass.category);
+  const { inviteCode, ...visible } = klass;
   return {
-    ...klass,
+    ...visible,
+    ...(viewer && canManageClass(viewer, klass) ? { inviteCode } : {}),
     categoryName: examType?.name || klass.category || "GESP",
     teacherName: teacher?.username || "unknown",
     studentCount,
@@ -691,7 +712,7 @@ function classPayload(klass, db) {
   };
 }
 
-function classReportPayload(klass, db, papers) {
+function classReportPayload(klass, db, papers, viewer = null) {
   const enrollments = db.enrollments.filter((item) => item.classId === klass.id);
   const students = enrollments
     .map((item) => db.users.find((user) => user.id === item.userId))
@@ -708,7 +729,7 @@ function classReportPayload(klass, db, papers) {
       .filter((item) => item.type === "objective")
       .sort((a, b) => ((b.score || 0) / (b.fullScore || 1)) - ((a.score || 0) / (a.fullScore || 1)))[0];
     return {
-      ...publicUser(student),
+      ...publicUser(student, db),
       joinedAt: enrollments.find((item) => item.userId === student.id)?.createdAt || "",
       attemptCount: studentAttempts.length,
       bestObjective: bestObjective ? {
@@ -721,7 +742,7 @@ function classReportPayload(klass, db, papers) {
     };
   });
   return {
-    class: classPayload(klass, db),
+    class: classPayload(klass, db, viewer),
     assignments: assignments.map((assignment) => ({
       ...assignment,
       paperTitle: papers.find((paper) => paper.id === assignment.paperId)?.title || assignment.title
@@ -833,7 +854,7 @@ async function api(req, res) {
   if (req.method === "GET" && url.pathname === "/api/me") {
     const user = currentUser(req, db);
     const attempts = user ? db.attempts.filter((item) => item.userId === user.id).slice(0, 80) : [];
-    const classes = user ? db.classes.filter((klass) => canAccessClass(user, klass, db)).map((klass) => classPayload(klass, db)) : [];
+    const classes = user ? db.classes.filter((klass) => canAccessClass(user, klass, db)).map((klass) => classPayload(klass, db, user)) : [];
     return sendJson(res, 200, {
       user: publicUser(user),
       attempts,
@@ -900,6 +921,22 @@ async function api(req, res) {
     return sendJson(res, 200, { ok: true }, {
       "Set-Cookie": "sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"
     });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/me/password") {
+    const user = requireUser(req, res, db);
+    if (!user) return;
+    const body = await readBody(req);
+    const currentPassword = String(body.currentPassword || "");
+    const newPassword = String(body.newPassword || "");
+    if (!verifyPassword(currentPassword, user)) return sendJson(res, 400, { message: "当前密码不正确。" });
+    if (newPassword.length < 6) return sendJson(res, 400, { message: "新密码至少 6 位。" });
+    const { salt, hash } = hashPassword(newPassword);
+    user.salt = salt;
+    user.passwordHash = hash;
+    audit(db, user, "user:password", user.id);
+    saveDb(db);
+    return sendJson(res, 200, { ok: true });
   }
 
   if (req.method === "POST" && url.pathname === "/api/submit-objective") {
@@ -979,10 +1016,23 @@ async function api(req, res) {
         students: studentIds.size,
         attempts: studentAttempts.length
       },
-      classes: teacherClasses.map((klass) => classPayload(klass, db)),
+      classes: teacherClasses.map((klass) => classPayload(klass, db, user)),
       recentAttempts: studentAttempts.slice(0, 20),
       assignments: db.assignments.filter((item) => classIds.has(item.classId)).slice(0, 30)
     });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/teacher/students") {
+    const user = requireTeacher(req, res, db);
+    if (!user) return;
+    const students = db.users
+      .filter((item) => item.role === "student" && item.status !== "disabled")
+      .filter((item) => isAdmin(user) || item.teacherId === user.id)
+      .map((item) => ({
+        ...publicUser(item, db),
+        enrolledClassIds: db.enrollments.filter((enrollment) => enrollment.userId === item.id).map((enrollment) => enrollment.classId)
+      }));
+    return sendJson(res, 200, { students });
   }
 
   if (req.method === "GET" && url.pathname === "/api/admin/papers") {
@@ -1086,12 +1136,18 @@ async function api(req, res) {
   if (req.method === "GET" && url.pathname === "/api/classes") {
     const user = requireUser(req, res, db);
     if (!user) return;
-    const classes = db.classes.filter((klass) => canAccessClass(user, klass, db)).map((klass) => classPayload(klass, db));
+    const classes = db.classes.filter((klass) => canAccessClass(user, klass, db)).map((klass) => classPayload(klass, db, user));
     const classIds = new Set(classes.map((klass) => klass.id));
     const visiblePaperIds = new Set(papers.filter((paper) => !isPaperHidden(db, paper)).map((paper) => paper.id));
     return sendJson(res, 200, {
       classes,
-      assignments: db.assignments.filter((item) => classIds.has(item.classId) && visiblePaperIds.has(item.paperId))
+      assignments: db.assignments
+        .filter((item) => classIds.has(item.classId) && visiblePaperIds.has(item.paperId))
+        .map((assignment) => ({
+          ...assignment,
+          paperTitle: papers.find((paper) => paper.id === assignment.paperId)?.title || assignment.title,
+          className: db.classes.find((klass) => klass.id === assignment.classId)?.name || ""
+        }))
     });
   }
 
@@ -1117,7 +1173,7 @@ async function api(req, res) {
     db.classes.unshift(klass);
     audit(db, user, "class:create", klass.id);
     saveDb(db);
-    return sendJson(res, 201, { class: classPayload(klass, db) });
+    return sendJson(res, 201, { class: classPayload(klass, db, user) });
   }
 
   if (req.method === "POST" && url.pathname === "/api/classes/join") {
@@ -1133,7 +1189,48 @@ async function api(req, res) {
       audit(db, user, "class:join", klass.id);
       saveDb(db);
     }
-    return sendJson(res, 200, { class: classPayload(klass, db) });
+    return sendJson(res, 200, { class: classPayload(klass, db, user) });
+  }
+
+  const classStudentsAdd = url.pathname.match(/^\/api\/classes\/([^/]+)\/students$/);
+  if (req.method === "POST" && classStudentsAdd) {
+    const user = requireTeacher(req, res, db);
+    if (!user) return;
+    const classId = decodeURIComponent(classStudentsAdd[1]);
+    const klass = db.classes.find((item) => item.id === classId);
+    if (!canManageClass(user, klass)) {
+      return sendJson(res, 404, { message: "班级不存在或无权限。" });
+    }
+    const body = await readBody(req);
+    const ids = Array.isArray(body.studentIds) ? body.studentIds.map((id) => String(id || "")) : [];
+    const uniqueIds = [...new Set(ids)].filter(Boolean);
+    if (!uniqueIds.length) return sendJson(res, 400, { message: "请先选择学生。" });
+
+    const allowedStudents = db.users.filter((item) => {
+      if (item.role !== "student" || item.status === "disabled") return false;
+      if (isAdmin(user)) return true;
+      return item.teacherId === user.id;
+    });
+    const allowedIds = new Set(allowedStudents.map((item) => item.id));
+    let added = 0;
+    const skipped = [];
+    uniqueIds.forEach((studentId) => {
+      const student = db.users.find((item) => item.id === studentId);
+      if (!student || !allowedIds.has(studentId)) {
+        skipped.push({ id: studentId, message: "学生不存在或不属于当前教师。" });
+        return;
+      }
+      const exists = db.enrollments.some((item) => item.classId === classId && item.userId === studentId);
+      if (exists) {
+        skipped.push({ id: studentId, username: student.username, message: "已在班级中。" });
+        return;
+      }
+      db.enrollments.push({ id: crypto.randomUUID(), classId, userId: studentId, createdAt: new Date().toISOString(), addedBy: user.id });
+      added += 1;
+      audit(db, user, "class:add-student", `${classId}:${studentId}`);
+    });
+    if (added) saveDb(db);
+    return sendJson(res, 200, { added, skipped, class: classPayload(klass, db, user) });
   }
 
   const assignmentCreate = url.pathname.match(/^\/api\/classes\/([^/]+)\/assignments$/);
@@ -1172,7 +1269,7 @@ async function api(req, res) {
     if (!klass || (!isAdmin(user) && klass.teacherId !== user.id)) {
       return sendJson(res, 404, { message: "班级不存在或无权限。" });
     }
-    return sendJson(res, 200, classReportPayload(klass, db, papers));
+    return sendJson(res, 200, classReportPayload(klass, db, papers, user));
   }
 
   if (req.method === "GET" && url.pathname === "/api/admin/users") {
@@ -1180,7 +1277,7 @@ async function api(req, res) {
     if (!user) return;
     return sendJson(res, 200, {
       users: db.users.map((item) => ({
-        ...publicUser(item),
+        ...publicUser(item, db),
         attemptCount: db.attempts.filter((attempt) => attempt.userId === item.id).length
       }))
     });
@@ -1193,6 +1290,7 @@ async function api(req, res) {
     const username = String(body.username || "").trim();
     const password = String(body.password || "");
     const role = ["admin", "teacher", "student"].includes(body.role) ? body.role : "student";
+    const teacherId = role === "student" ? normalizeStudentTeacherId(db, body.teacherId) : "";
     if (!/^[A-Za-z][A-Za-z0-9_]{3,15}$/.test(username)) {
       return sendJson(res, 400, { message: "用户名需字母开头，4-16 位英文、数字或下划线。" });
     }
@@ -1200,10 +1298,10 @@ async function api(req, res) {
     if (db.users.some((item) => item.username.toLowerCase() === username.toLowerCase())) {
       return sendJson(res, 409, { message: "用户名已存在。" });
     }
-    const newUser = createUserRecord(db, username, password, role);
+    const newUser = createUserRecord(db, username, password, role, teacherId);
     audit(db, user, "user:create", newUser.id);
     saveDb(db);
-    return sendJson(res, 201, { user: publicUser(newUser) });
+    return sendJson(res, 201, { user: publicUser(newUser, db) });
   }
 
   if (req.method === "POST" && url.pathname === "/api/admin/users/import") {
@@ -1211,6 +1309,7 @@ async function api(req, res) {
     if (!user) return;
     const upload = parseMultipart(req, await readRawBody(req));
     const role = ["teacher", "student"].includes(upload.fields.role) ? upload.fields.role : "student";
+    const teacherId = role === "student" ? normalizeStudentTeacherId(db, upload.fields.teacherId) : "";
     const file = upload.files.file;
     if (!file?.content?.length) return sendJson(res, 400, { message: "请上传 Excel 文件。" });
     const rows = parseUserRowsFromWorkbook(file.content);
@@ -1232,9 +1331,9 @@ async function api(req, res) {
         skipped.push({ row: rowNumber, username, message: "用户名已存在。" });
         return;
       }
-      const newUser = createUserRecord(db, username, password, role);
+      const newUser = createUserRecord(db, username, password, role, teacherId);
       existingNames.add(username.toLowerCase());
-      created.push(publicUser(newUser));
+      created.push(publicUser(newUser, db));
       audit(db, user, "user:bulk-create", newUser.id);
     });
     if (created.length) saveDb(db);
@@ -1258,9 +1357,11 @@ async function api(req, res) {
     if (!["admin", "teacher", "student"].includes(body.role)) return sendJson(res, 400, { message: "角色不正确。" });
     target.role = body.role;
     target.status = body.status === "disabled" ? "disabled" : "active";
+    if (target.role === "student") target.teacherId = normalizeStudentTeacherId(db, body.teacherId || target.teacherId);
+    else delete target.teacherId;
     audit(db, user, "user:role", target.id);
     saveDb(db);
-    return sendJson(res, 200, { user: publicUser(target) });
+    return sendJson(res, 200, { user: publicUser(target, db) });
   }
 
   return sendJson(res, 404, { message: "接口不存在。" });

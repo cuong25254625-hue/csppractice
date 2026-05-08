@@ -883,6 +883,11 @@ button {
   border-bottom: 0;
 }
 
+.paper-item.active {
+  background: #f0fdfa;
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+
 .paper-icon {
   width: 46px;
   height: 46px;
@@ -915,6 +920,34 @@ button {
   display: grid;
   gap: 18px;
   align-content: start;
+}
+
+.action-panel {
+  position: sticky;
+  top: 78px;
+  z-index: 1;
+}
+
+.class-student-adder {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfdff;
+}
+
+.student-pick-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.student-pick-list small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
 }
 
 .mini-list {
@@ -1670,6 +1703,19 @@ mjx-container.mjx-explorer-active > mjx-help {
   .paper-item .primary-btn {
     grid-column: 2;
     width: max-content;
+  }
+
+  .paper-item .secondary-btn {
+    grid-column: 2;
+    width: max-content;
+  }
+
+  .action-panel {
+    position: static;
+  }
+
+  .student-pick-list {
+    grid-template-columns: 1fr;
   }
 
   .form-grid {

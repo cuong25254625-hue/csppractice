@@ -847,6 +847,8 @@ async function renderManage() {
   document.querySelectorAll("[data-remove-sub-question]").forEach((button) => button.addEventListener("click", () => removeSubQuestion(Number(button.dataset.parentQuestion), Number(button.dataset.removeSubQuestion))));
   document.querySelectorAll("[data-remove-question]").forEach((button) => button.addEventListener("click", () => removeBuilderQuestion(Number(button.dataset.removeQuestion))));
   document.querySelectorAll("[data-insert-markdown]").forEach((button) => button.addEventListener("click", () => insertMarkdownSnippet(button)));
+  document.querySelectorAll("[data-jump-builder-question]").forEach((button) => button.addEventListener("click", () => jumpToBuilderQuestion(Number(button.dataset.jumpBuilderQuestion))));
+  document.querySelectorAll("[data-apply-score]").forEach((button) => button.addEventListener("click", () => applyBulkScore(button.dataset.applyScore)));
   document.querySelectorAll("[data-edit-paper]").forEach((button) => button.addEventListener("click", () => loadPaperIntoEditor(button.dataset.editPaper)));
   document.querySelectorAll("[data-delete-paper]").forEach((button) => button.addEventListener("click", () => deletePaperById(button.dataset.deletePaper)));
   document.querySelectorAll("[data-toggle-paper-hidden]").forEach((button) => button.addEventListener("click", () => togglePaperHidden(button.dataset.togglePaperHidden)));
@@ -997,6 +999,7 @@ function renderPaperBuilder(paper) {
         <label class="span-2"><span>说明</span><input id="paperSummaryInput" value="${escapeHtml(paper.summary || "")}"></label>
       </div>
       ${toolbar}
+      ${renderBuilderUtilityBar(questions)}
       <p class="builder-hint">题干、解析和编程题题面支持 Markdown，可直接粘贴 &#96;&#96;&#96;cpp 代码块。</p>
       <div class="builder-list">${questions.map((question, index) => renderBuilderQuestion(question, index)).join("") || `<div class="empty">还没有题目，先添加一题。</div>`}</div>
       ${toolbar}
@@ -1008,10 +1011,15 @@ function renderQuestionAddToolbar() {
   return `<div class="builder-toolbar"><button class="secondary-btn" type="button" data-add-question="single">添加单选题</button><button class="secondary-btn" type="button" data-add-question="judge">添加判断题</button><button class="secondary-btn" type="button" data-add-question="multi">添加多选题</button><button class="secondary-btn" type="button" data-add-question="reading">添加阅读程序题</button><button class="secondary-btn" type="button" data-add-question="completion">添加完善程序题</button>${state.programSubmissionEnabled ? `<button class="secondary-btn" type="button" data-add-question="program">添加编程题</button>` : ""}</div>`;
 }
 
+function renderBuilderUtilityBar(questions) {
+  const nav = questions.map((question, index) => `<button class="secondary-btn" type="button" data-jump-builder-question="${index}">${index + 1}</button>`).join("");
+  return `<div class="builder-utility"><div class="builder-jump-list">${nav || `<span class="muted">暂无题目</span>`}</div><div class="bulk-score-tools"><input id="bulkScoreInput" type="number" min="0" step="0.5" placeholder="分值"><button class="secondary-btn" type="button" data-apply-score="all">全部题</button><button class="secondary-btn" type="button" data-apply-score="objective">客观题</button><button class="secondary-btn" type="button" data-apply-score="subquestions">复合题子题</button></div></div>`;
+}
+
 function renderBuilderQuestion(question, index) {
   const typeName = `${questionTypeName(question.type)}题`;
   const score = isCompositeType(question.type) ? (question.subquestions || []).reduce((sum, item) => sum + Number(item.score || 0), 0) : Number(question.score || 2);
-  return `<article class="builder-question" data-builder-question="${index}"><div class="question-head"><span>第 ${index + 1} 题 · ${typeName}</span><button class="danger-btn" type="button" data-remove-question="${index}">删除</button></div><input data-field="id" value="${escapeHtml(question.id || `q${index + 1}`)}" placeholder="题目 ID"><input data-field="score" type="number" value="${score}" placeholder="分值" ${isCompositeType(question.type) ? "readonly" : ""}>${renderBuilderQuestionBody(question, index)}</article>`;
+  return `<article class="builder-question" id="builder-question-${index}" data-builder-question="${index}"><div class="question-head"><span class="builder-question-title"><strong>${index + 1}</strong><span>第 ${index + 1} 题 · ${typeName}</span></span><button class="danger-btn" type="button" data-remove-question="${index}">删除</button></div><div class="builder-question-meta"><input data-field="id" value="${escapeHtml(question.id || `q${index + 1}`)}" placeholder="题目 ID"><input data-field="score" type="number" value="${score}" placeholder="分值" ${isCompositeType(question.type) ? "readonly" : ""}></div>${renderBuilderQuestionBody(question, index)}</article>`;
 }
 
 function renderBuilderQuestionBody(question, index) {
@@ -1043,6 +1051,52 @@ function renderSubQuestionBuilder(question, parentIndex, subIndex) {
 
 function renderProgramBuilder(question) {
   return `<input data-field="title" value="${escapeHtml(question.title || "")}" placeholder="编程题标题">${markdownInsertTools("statement")}<textarea data-field="statement" placeholder="题面描述，支持 Markdown 代码块">${escapeHtml(question.statement || "")}</textarea><textarea data-field="input" placeholder="输入格式，支持 Markdown">${escapeHtml(question.input || "")}</textarea><textarea data-field="output" placeholder="输出格式，支持 Markdown">${escapeHtml(question.output || "")}</textarea><textarea data-field="samplesText" placeholder="样例，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.samples || []))}</textarea><textarea data-field="testsText" placeholder="隐藏测试点，每组用 --- 分隔，输入和输出用 === 分隔">${escapeHtml(formatCases(question.tests || []))}</textarea>`;
+}
+
+function jumpToBuilderQuestion(index) {
+  const target = document.querySelector(`#builder-question-${index}`);
+  if (!target) return;
+  target.scrollIntoView({ behavior: "smooth", block: "start" });
+  target.classList.add("focus-flash");
+  window.setTimeout(() => target.classList.remove("focus-flash"), 900);
+}
+
+function applyBulkScore(scope) {
+  const input = document.querySelector("#bulkScoreInput");
+  const score = Number(input?.value);
+  if (!Number.isFinite(score) || score < 0) return notify("请输入有效分值。");
+  const questions = Array.from(document.querySelectorAll("[data-builder-question]"));
+  let changed = 0;
+  questions.forEach((item) => {
+    const source = state.manage.editPaper.questions[Number(item.dataset.builderQuestion)];
+    if (!source) return;
+    if (scope === "all") {
+      if (isCompositeType(source.type)) changed += applyScoreToSubquestions(item, score);
+      else if (setScoreInput(item, score)) changed += 1;
+      return;
+    }
+    if (scope === "objective" && isObjectiveType(source.type) && setScoreInput(item, score)) changed += 1;
+    if (scope === "subquestions" && isCompositeType(source.type)) changed += applyScoreToSubquestions(item, score);
+  });
+  notify(changed ? `已修改 ${changed} 处题目分值。` : "没有符合条件的题目。");
+}
+
+function applyScoreToSubquestions(item, score) {
+  let changed = 0;
+  item.querySelectorAll("[data-sub-question]").forEach((subItem) => {
+    if (setScoreInput(subItem, score)) changed += 1;
+  });
+  const total = Array.from(item.querySelectorAll("[data-sub-question] input[data-field='score']")).reduce((sum, input) => sum + Number(input.value || 0), 0);
+  const parentScore = item.querySelector(":scope > .builder-question-meta input[data-field='score']");
+  if (parentScore) parentScore.value = total;
+  return changed;
+}
+
+function setScoreInput(root, score) {
+  const input = root.querySelector("input[data-field='score']");
+  if (!input || input.readOnly) return false;
+  input.value = score;
+  return true;
 }
 
 function formatCases(cases) {

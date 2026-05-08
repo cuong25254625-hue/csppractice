@@ -1383,6 +1383,12 @@ mjx-container[display="true"] {
   margin: 0.4em 0 !important;
 }
 
+mjx-help,
+mjx-container.mjx-explorer-active > mjx-help {
+  display: none !important;
+  pointer-events: none !important;
+}
+
 .auth-actions {
   display: flex;
   justify-content: space-between;

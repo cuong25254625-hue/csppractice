@@ -391,13 +391,13 @@ function renderPaper(paperId) {
   const stats = paperStats(paper);
   const objectiveQuestions = flattenObjectiveQuestions(paper.questions);
   const groups = [
-    ["一、单选题", paper.questions.filter((question) => question.type === "single")],
-    ["二、判断题", paper.questions.filter((question) => question.type === "judge")],
-    ["三、多选题", paper.questions.filter((question) => question.type === "multi")],
-    ["四、阅读程序题", paper.questions.filter((question) => question.type === "reading")],
-    ["五、完善程序题", paper.questions.filter((question) => question.type === "completion")],
-    ["六、编程题", paper.questions.filter((question) => question.type === "program")]
-  ];
+    ["单选题", paper.questions.filter((question) => question.type === "single")],
+    ["判断题", paper.questions.filter((question) => question.type === "judge")],
+    ["多选题", paper.questions.filter((question) => question.type === "multi")],
+    ["阅读程序题", paper.questions.filter((question) => question.type === "reading")],
+    ["完善程序题", paper.questions.filter((question) => question.type === "completion")],
+    ["编程题", paper.questions.filter((question) => question.type === "program")]
+  ].filter(([, questions]) => questions.length);
 
   app.innerHTML = `
     <div class="paper-layout">
@@ -419,7 +419,7 @@ function renderPaper(paperId) {
           </div>
         </div>
 
-        ${paper.questions.length ? groups.map(([title, questions]) => renderQuestionGroup(title, questions)).join("") : `<div class="panel empty" style="margin-top: 18px;">这套试卷还没有题目。</div>`}
+        ${paper.questions.length ? groups.map(([title, questions], index) => renderQuestionGroup(`${sectionNumber(index + 1)}、${title}`, questions)).join("") : `<div class="panel empty" style="margin-top: 18px;">这套试卷还没有题目。</div>`}
       </section>
 
       <aside class="panel answer-card">
@@ -461,6 +461,10 @@ function jumpToQuestion(event) {
 function renderQuestionGroup(title, questions) {
   if (!questions.length) return "";
   return `<div class="section-label">${title}</div>${questions.map((question, index) => renderQuestion(question, index)).join("")}`;
+}
+
+function sectionNumber(value) {
+  return ["", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"][value] || String(value);
 }
 
 function renderQuestion(question, index) {

@@ -1361,12 +1361,13 @@ async function togglePaperHidden(id) {
   const paper = state.manage.papers.find((item) => item.id === id);
   if (!paper) return;
   try {
-    const updated = { ...paper, hidden: !paper.hidden };
-    await api("/api/admin/papers", { method: "POST", body: { paper: updated } });
+    const hidden = !paper.hidden;
+    await api(`/api/admin/papers/${encodeURIComponent(id)}/visibility`, { method: "POST", body: { hidden } });
+    paper.hidden = hidden;
     await refreshPapers();
-    if (state.manage.editPaper?.id === id) state.manage.editPaper.hidden = updated.hidden;
-    notify(updated.hidden ? "试卷已隐藏。" : "试卷已显示。");
-    renderManage();
+    if (state.manage.editPaper?.id === id) state.manage.editPaper.hidden = hidden;
+    notify(hidden ? "试卷已隐藏。" : "试卷已显示。");
+    await renderManage();
   } catch (error) {
     notify(error.message);
   }

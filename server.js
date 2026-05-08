@@ -945,7 +945,7 @@ async function api(req, res) {
   if (req.method === "GET" && url.pathname === "/api/admin/papers") {
     const user = requireTeacher(req, res, db);
     if (!user) return;
-    return sendJson(res, 200, { papers });
+    return sendJson(res, 200, { papers: papers.map((paper) => ({ ...paper, hidden: Boolean(paper.hidden) })) });
   }
 
   if (req.method === "POST" && url.pathname === "/api/admin/papers") {
@@ -965,6 +965,23 @@ async function api(req, res) {
     savePapers(papers);
     saveDb(db);
     return sendJson(res, 200, { paper });
+  }
+
+  const paperVisibility = url.pathname.match(/^\/api\/admin\/papers\/([^/]+)\/visibility$/);
+  if (req.method === "POST" && paperVisibility) {
+    const user = requireTeacher(req, res, db);
+    if (!user) return;
+    const id = decodeURIComponent(paperVisibility[1]);
+    const paper = papers.find((item) => item.id === id);
+    if (!paper) return sendJson(res, 404, { message: "试卷不存在。" });
+    const body = await readBody(req);
+    paper.hidden = Boolean(body.hidden);
+    paper.updatedBy = user.id;
+    paper.updatedAt = new Date().toISOString();
+    audit(db, user, paper.hidden ? "paper:hide" : "paper:show", id);
+    savePapers(papers);
+    saveDb(db);
+    return sendJson(res, 200, { paper: { ...paper, hidden: Boolean(paper.hidden) } });
   }
 
   if (req.method === "POST" && url.pathname === "/api/admin/exam-types") {

@@ -692,7 +692,7 @@ async function renderStudy() {
         </div>
         <div class="panel" style="margin-top: 18px;">
           <div class="panel-head"><h2>错题本</h2><span class="muted">${summary.wrongQuestions.length} 题</span></div>
-          <div class="panel-body wrong-list">${summary.wrongQuestions.map((item) => renderWrongQuestion(item)).join("") || `<div class="empty">还没有错题，保持住。</div>`}</div>
+          <div class="panel-body wrong-list">${renderWrongBook(summary.wrongQuestions)}</div>
         </div>
       </section>
       <aside class="side-stack">
@@ -715,8 +715,23 @@ async function renderStudy() {
   typesetMath(app);
 }
 
-function renderWrongQuestion(item) {
-  return `<article class="wrong-item"><div class="question-head"><span>${escapeHtml(item.paperTitle)}</span><a class="secondary-btn" href="#/paper/${item.paperId}">重练</a></div><div class="rich-text">${renderMarkdown(item.stem)}</div>${item.choices?.length ? `<ol class="choice-list">${item.choices.map((choice, index) => `<li><span class="option-prefix">${String.fromCharCode(65 + index)}.</span><span class="rich-text">${renderMarkdown(choice)}</span></li>`).join("")}</ol>` : ""}<div class="meta"><span>你的答案：${escapeHtml(formatAnswer(item, item.userAnswer))}</span><span>正确答案：${escapeHtml(formatAnswer(item, item.answer))}</span></div><div class="score-box rich-text">${renderMarkdown(item.explanation || "暂无解析")}</div></article>`;
+function renderWrongBook(items) {
+  if (!items.length) return `<div class="empty">还没有错题，保持住。</div>`;
+  const groups = new Map();
+  items.forEach((item) => {
+    if (!groups.has(item.paperId)) groups.set(item.paperId, { title: item.paperTitle, items: [] });
+    groups.get(item.paperId).items.push(item);
+  });
+  return Array.from(groups.entries()).map(([paperId, group]) => `
+    <details class="wrong-group" open>
+      <summary><span>${escapeHtml(group.title)}</span><span class="muted">${group.items.length} 题</span></summary>
+      <div class="wrong-group-body">${group.items.map((item, index) => renderWrongQuestion(item, index)).join("")}</div>
+    </details>
+  `).join("");
+}
+
+function renderWrongQuestion(item, index = 0) {
+  return `<details class="wrong-item"><summary><div><strong>${index + 1}. ${escapeHtml(questionTypeName(item.type))}</strong><div class="wrong-stem-preview rich-text">${renderMarkdown(item.stem)}</div><div class="meta"><span>你的答案：${escapeHtml(formatAnswer(item, item.userAnswer))}</span><span>正确答案：${escapeHtml(formatAnswer(item, item.answer))}</span></div></div><a class="secondary-btn" href="#/paper/${item.paperId}">重练</a></summary><div class="wrong-detail">${item.choices?.length ? `<ol class="choice-list">${item.choices.map((choice, choiceIndex) => `<li><span class="option-prefix">${String.fromCharCode(65 + choiceIndex)}.</span><span class="rich-text">${renderMarkdown(choice)}</span></li>`).join("")}</ol>` : ""}<div class="score-box rich-text">${renderMarkdown(item.explanation || "暂无解析")}</div></div></details>`;
 }
 
 function formatAnswer(item, value) {
@@ -1003,7 +1018,8 @@ function renderPaperBuilder(paper) {
         <label class="span-2"><span>说明</span><input id="paperSummaryInput" value="${escapeHtml(paper.summary || "")}"></label>
       </div>
       ${toolbar}
-      ${renderBuilderUtilityBar(questions)}
+      ${renderBuilderUtilityBar()}
+      ${renderBuilderQuestionNav(questions)}
       <p class="builder-hint">题干、解析和编程题题面支持 Markdown，可直接粘贴 &#96;&#96;&#96;cpp 代码块。</p>
       <div class="builder-list">${questions.map((question, index) => renderBuilderQuestion(question, index)).join("") || `<div class="empty">还没有题目，先添加一题。</div>`}</div>
       ${toolbar}
@@ -1015,9 +1031,13 @@ function renderQuestionAddToolbar() {
   return `<div class="builder-toolbar"><button class="secondary-btn" type="button" data-add-question="single">添加单选题</button><button class="secondary-btn" type="button" data-add-question="judge">添加判断题</button><button class="secondary-btn" type="button" data-add-question="multi">添加多选题</button><button class="secondary-btn" type="button" data-add-question="reading">添加阅读程序题</button><button class="secondary-btn" type="button" data-add-question="completion">添加完善程序题</button>${state.programSubmissionEnabled ? `<button class="secondary-btn" type="button" data-add-question="program">添加编程题</button>` : ""}</div>`;
 }
 
-function renderBuilderUtilityBar(questions) {
+function renderBuilderUtilityBar() {
+  return `<div class="builder-utility"><div class="bulk-score-tools"><input id="bulkScoreInput" type="number" min="0" step="0.5" placeholder="分值"><button class="secondary-btn" type="button" data-apply-score="all">全部题</button><button class="secondary-btn" type="button" data-apply-score="objective">客观题</button><button class="secondary-btn" type="button" data-apply-score="subquestions">复合题子题</button></div></div>`;
+}
+
+function renderBuilderQuestionNav(questions) {
   const nav = questions.map((question, index) => `<button class="secondary-btn" type="button" data-jump-builder-question="${index}">${index + 1}</button>`).join("");
-  return `<div class="builder-utility"><div class="builder-jump-list">${nav || `<span class="muted">暂无题目</span>`}</div><div class="bulk-score-tools"><input id="bulkScoreInput" type="number" min="0" step="0.5" placeholder="分值"><button class="secondary-btn" type="button" data-apply-score="all">全部题</button><button class="secondary-btn" type="button" data-apply-score="objective">客观题</button><button class="secondary-btn" type="button" data-apply-score="subquestions">复合题子题</button></div></div>`;
+  return `<div class="builder-floating-nav"><span>题号</span><div class="builder-jump-list">${nav || `<span class="muted">暂无题目</span>`}</div></div>`;
 }
 
 function renderBuilderQuestion(question, index) {

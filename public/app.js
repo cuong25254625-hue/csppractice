@@ -7,7 +7,7 @@ const state = {
   authMode: "login",
   filters: { category: "all", level: "all", keyword: "" },
   programSubmissionEnabled: false,
-  manage: { papers: [], overview: null, users: [], editPaper: null, classReport: null, tab: "papers", paperView: "list", importResult: null }
+  manage: { papers: [], overview: null, users: [], editPaper: null, classReport: null, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" } }
 };
 
 const app = document.querySelector("#app");
@@ -913,6 +913,25 @@ async function renderManage() {
   document.querySelector("#hideSelectedPapers")?.addEventListener("click", () => setSelectedPapersVisibility(true));
   document.querySelector("#showSelectedPapers")?.addEventListener("click", () => setSelectedPapersVisibility(false));
   document.querySelector("#deleteSelectedPapers")?.addEventListener("click", deleteSelectedPapers);
+  document.querySelector("#managePaperCategoryFilter")?.addEventListener("change", (event) => {
+    state.manage.paperFilter.category = event.target.value;
+    renderManage();
+  });
+  const keywordInput = document.querySelector("#managePaperKeywordFilter");
+  if (keywordInput) {
+    let keywordTimer;
+    keywordInput.addEventListener("input", (event) => {
+      window.clearTimeout(keywordTimer);
+      keywordTimer = window.setTimeout(() => {
+        state.manage.paperFilter.keyword = event.target.value.trim();
+        renderManage();
+      }, 300);
+    });
+  }
+  document.querySelector("#clearPaperFilter")?.addEventListener("click", () => {
+    state.manage.paperFilter = { category: "all", keyword: "" };
+    renderManage();
+  });
   document.querySelector("#createClass")?.addEventListener("click", createClass);
   document.querySelector("#classCategory")?.addEventListener("change", updateClassLevelVisibility);
   updateClassLevelVisibility();
@@ -935,10 +954,20 @@ function renderManagePapersSection() {
 }
 
 function renderPaperListSection() {
+  const filtered = filteredManagePapers();
+  const hasFilter = state.manage.paperFilter.category !== "all" || state.manage.paperFilter.keyword;
   return `
     <div class="panel">
-      <div class="panel-head"><h2>管理试卷</h2><span class="muted">${state.manage.papers.length} 套试卷</span></div>
+      <div class="panel-head"><h2>管理试卷</h2><span class="muted">${filtered.length} / ${state.manage.papers.length} 套</span></div>
       <div class="panel-body">
+        <div class="paper-manage-filters">
+          <select id="managePaperCategoryFilter" aria-label="按类型筛选">
+            <option value="all" ${state.manage.paperFilter.category === "all" ? "selected" : ""}>全部类型</option>
+            ${state.examTypes.map((type) => `<option value="${type.id}" ${state.manage.paperFilter.category === type.id ? "selected" : ""}>${escapeHtml(type.name)}</option>`).join("")}
+          </select>
+          <input id="managePaperKeywordFilter" type="search" placeholder="搜索试卷名称…" value="${escapeHtml(state.manage.paperFilter.keyword)}" aria-label="搜索试卷">
+          ${hasFilter ? `<button class="secondary-btn" type="button" id="clearPaperFilter">清除筛选</button>` : ""}
+        </div>
         <div class="paper-manage-actions">
           <label class="inline-check"><input id="selectAllPapers" type="checkbox">全选</label>
           <button class="secondary-btn" type="button" id="hideSelectedPapers">隐藏选中</button>
@@ -947,7 +976,7 @@ function renderPaperListSection() {
           <button class="primary-btn" type="button" id="newPaper">创建新试卷</button>
         </div>
         <div class="paper-manage-list">
-          ${state.manage.papers.map(renderPaperManageRow).join("") || `<div class="empty">暂无试卷。</div>`}
+          ${filtered.map(renderPaperManageRow).join("") || `<div class="empty">${hasFilter ? "没有匹配的试卷，尝试调整筛选条件。" : "暂无试卷。"}</div>`}
         </div>
       </div>
     </div>
@@ -970,6 +999,15 @@ function renderPaperEditorSection() {
       </div>
     </div>
   `;
+}
+
+function filteredManagePapers() {
+  return state.manage.papers.filter((paper) => {
+    const byCategory = state.manage.paperFilter.category === "all" || paper.category === state.manage.paperFilter.category;
+    const keyword = state.manage.paperFilter.keyword.toLowerCase();
+    const byKeyword = !keyword || paper.title.toLowerCase().includes(keyword);
+    return byCategory && byKeyword;
+  });
 }
 
 function renderPaperManageRow(paper) {

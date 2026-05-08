@@ -557,6 +557,35 @@ button {
   gap: 18px;
 }
 
+.paper-manage-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.paper-manage-filters select,
+.paper-manage-filters input {
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 10px;
+  background: #fff;
+}
+
+.paper-manage-filters select {
+  min-width: 140px;
+}
+
+.paper-manage-filters input {
+  flex: 1;
+  max-width: 280px;
+}
+
+.paper-manage-filters input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
 .paper-manage-actions {
   display: flex;
   align-items: center;

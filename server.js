@@ -623,6 +623,18 @@ function normalizeQuestion(question, fallbackId) {
   return question;
 }
 
+function updatePaperVisibility(req, res, db, papers, user, id, hidden) {
+  const paper = papers.find((item) => item.id === id);
+  if (!paper) return sendJson(res, 404, { message: "试卷不存在。" });
+  paper.hidden = Boolean(hidden);
+  paper.updatedBy = user.id;
+  paper.updatedAt = new Date().toISOString();
+  audit(db, user, paper.hidden ? "paper:hide" : "paper:show", id);
+  savePapers(papers);
+  saveDb(db);
+  return sendJson(res, 200, { paper: { ...paper, hidden: Boolean(paper.hidden) } });
+}
+
 function slugify(value) {
   const ascii = String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   return ascii || `paper-${crypto.randomBytes(4).toString("hex")}`;
@@ -967,21 +979,20 @@ async function api(req, res) {
     return sendJson(res, 200, { paper });
   }
 
+  if (req.method === "POST" && url.pathname === "/api/admin/papers/visibility") {
+    const user = requireTeacher(req, res, db);
+    if (!user) return;
+    const body = await readBody(req);
+    return updatePaperVisibility(req, res, db, papers, user, String(body.id || ""), body.hidden);
+  }
+
   const paperVisibility = url.pathname.match(/^\/api\/admin\/papers\/([^/]+)\/visibility$/);
   if (req.method === "POST" && paperVisibility) {
     const user = requireTeacher(req, res, db);
     if (!user) return;
     const id = decodeURIComponent(paperVisibility[1]);
-    const paper = papers.find((item) => item.id === id);
-    if (!paper) return sendJson(res, 404, { message: "试卷不存在。" });
     const body = await readBody(req);
-    paper.hidden = Boolean(body.hidden);
-    paper.updatedBy = user.id;
-    paper.updatedAt = new Date().toISOString();
-    audit(db, user, paper.hidden ? "paper:hide" : "paper:show", id);
-    savePapers(papers);
-    saveDb(db);
-    return sendJson(res, 200, { paper: { ...paper, hidden: Boolean(paper.hidden) } });
+    return updatePaperVisibility(req, res, db, papers, user, id, body.hidden);
   }
 
   if (req.method === "POST" && url.pathname === "/api/admin/exam-types") {

@@ -1292,9 +1292,16 @@ function completionQuestionTemplate(id) {
   };
 }
 
-function samplePaper() {
+function nextPaperId() {
+  const used = new Set(state.manage.papers.map((paper) => String(paper.id || "")));
+  let index = 1;
+  while (used.has(String(index).padStart(4, "0"))) index += 1;
+  return String(index).padStart(4, "0");
+}
+
+function samplePaper(id = nextPaperId()) {
   return {
-    id: "new-paper-id",
+    id,
     title: "新建练习卷",
     category: "gesp",
     level: 1,
@@ -1362,7 +1369,7 @@ async function togglePaperHidden(id) {
   if (!paper) return;
   try {
     const hidden = !paper.hidden;
-    await api(`/api/admin/papers/${encodeURIComponent(id)}/visibility`, { method: "POST", body: { hidden } });
+    await api("/api/admin/papers/visibility", { method: "POST", body: { id, hidden } });
     paper.hidden = hidden;
     await refreshPapers();
     if (state.manage.editPaper?.id === id) state.manage.editPaper.hidden = hidden;

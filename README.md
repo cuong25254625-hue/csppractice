@@ -45,7 +45,12 @@ http://localhost:5173/api/health
 
 - `single`：单选题，`answer` 是选项下标，从 0 开始。
 - `judge`：判断题，`answer` 是 `true` 或 `false`。
+- `multi`：多选题，`answer` 是选项下标数组，例如 `[0, 2]`。
+- `reading`：阅读程序题，包含 `statement`、`code` 和 `subquestions`，子题支持判断、单选、多选。
+- `completion`：完善程序题，包含 `statement`、`code` 和 `subquestions`，适合配置 ①②③ 等填空选择。
 - `program`：编程题，`samples` 对学生可见，`tests` 是额外测试点。
+
+试卷支持 `hidden: true`。隐藏后学生端不显示，教师仍可在管理台恢复显示。
 
 试卷可以通过 `category` 区分方向：
 

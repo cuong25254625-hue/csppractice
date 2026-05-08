@@ -368,9 +368,25 @@ button {
   background: #fbfdff;
 }
 
+.sub-builder-list,
+.subquestion-list {
+  display: grid;
+  gap: 12px;
+}
+
+.sub-builder-question {
+  background: #fff;
+}
+
 .choice-editor {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.option-answer-grid {
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 

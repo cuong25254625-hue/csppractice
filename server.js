@@ -379,11 +379,47 @@ function parseUserRowsFromWorkbook(buffer) {
 function publicPaper(paper) {
   return {
     ...paper,
-    questions: (paper.questions || []).map((question) => {
-      const { answer, explanation, tests, ...visible } = question;
-      return visible;
-    })
+    questions: (paper.questions || []).map(publicQuestion)
   };
+}
+
+function publicQuestion(question) {
+  const { answer, explanation, tests, ...visible } = question;
+  if (Array.isArray(visible.subquestions)) {
+    visible.subquestions = visible.subquestions.map(publicQuestion);
+  }
+  return visible;
+}
+
+function isObjectiveQuestion(question) {
+  return ["single", "judge", "multi"].includes(question?.type);
+}
+
+function objectiveAnswerId(parent, question) {
+  return parent ? `${parent.id}__${question.id}` : question.id;
+}
+
+function flattenObjectiveQuestions(questions, parent = null) {
+  return (questions || []).flatMap((question) => {
+    if (isObjectiveQuestion(question)) return [{ ...question, answerId: objectiveAnswerId(parent, question) }];
+    if (question.type === "reading" || question.type === "completion") return flattenObjectiveQuestions(question.subquestions || [], question);
+    return [];
+  });
+}
+
+function normalizeAnswerValue(question, value) {
+  if (question.type === "judge") return value === true || value === "true";
+  if (question.type === "multi") {
+    const values = Array.isArray(value) ? value : [value].filter((item) => item !== undefined);
+    return values.map(Number).filter((item) => Number.isInteger(item)).sort((a, b) => a - b);
+  }
+  return Number(value);
+}
+
+function answersEqual(question, userAnswer) {
+  if (question.type !== "multi") return userAnswer === question.answer;
+  const answer = (Array.isArray(question.answer) ? question.answer : []).map(Number).sort((a, b) => a - b);
+  return answer.length === userAnswer.length && answer.every((value, index) => value === userAnswer[index]);
 }
 
 function findQuestion(papers, paperId, questionId) {
@@ -544,16 +580,47 @@ function validatePaper(input, db) {
     month: String(input.month || "01").padStart(2, "0"),
     participants: Number(input.participants || 0),
     views: Number(input.views || 0),
+    hidden: Boolean(input.hidden),
     summary: String(input.summary || "").trim(),
     questions: Array.isArray(input.questions) ? input.questions : []
   };
   if (!paper.title) throw new Error("试卷标题不能为空。");
   if (examType.levelEnabled && (paper.level < 1 || paper.level > 8)) throw new Error("等级需在 1-8 之间。");
-  paper.questions.forEach((question, index) => {
-    question.id ||= `${paper.id}-q${index + 1}`;
-    question.score = Number(question.score || 0);
-  });
+  paper.questions = paper.questions.map((question, index) => normalizeQuestion(question, `${paper.id}-q${index + 1}`));
   return paper;
+}
+
+function normalizeQuestion(question, fallbackId) {
+  question.id = String(question.id || fallbackId).trim() || fallbackId;
+  question.type = ["single", "judge", "multi", "program", "reading", "completion"].includes(question.type) ? question.type : "single";
+  question.score = Number(question.score || 0);
+  if (question.type === "multi") {
+    question.choices = Array.isArray(question.choices) ? question.choices.map(String) : [];
+    question.answer = (Array.isArray(question.answer) ? question.answer : []).map(Number).filter((item) => Number.isInteger(item));
+  } else if (question.type === "single") {
+    question.choices = Array.isArray(question.choices) ? question.choices.map(String) : [];
+    question.answer = Number(question.answer || 0);
+  } else if (question.type === "judge") {
+    question.answer = question.answer === true || question.answer === "true";
+  } else if (question.type === "reading" || question.type === "completion") {
+    question.title = String(question.title || "").trim();
+    question.statement = String(question.statement || "");
+    question.code = String(question.code || "");
+    question.subquestions = (Array.isArray(question.subquestions) ? question.subquestions : []).map((subquestion, index) => normalizeQuestion(subquestion, `${question.id}-s${index + 1}`));
+    question.score = question.subquestions.reduce((sum, subquestion) => sum + Number(subquestion.score || 0), 0);
+  } else if (question.type === "program") {
+    question.title = String(question.title || "").trim();
+    question.statement = String(question.statement || "");
+    question.input = String(question.input || "");
+    question.output = String(question.output || "");
+    question.samples = Array.isArray(question.samples) ? question.samples : [];
+    question.tests = Array.isArray(question.tests) ? question.tests : [];
+  }
+  if (isObjectiveQuestion(question)) {
+    question.stem = String(question.stem || "");
+    question.explanation = String(question.explanation || "");
+  }
+  return question;
 }
 
 function slugify(value) {
@@ -628,6 +695,7 @@ function buildStudentSummary(user, db, papers) {
     .filter((item) => classIds.has(item.classId))
     .map((assignment) => {
       const paper = papers.find((item) => item.id === assignment.paperId);
+      if (paper?.hidden) return null;
       const related = attempts.filter((item) => item.paperId === assignment.paperId);
       const objective = related
         .filter((item) => item.type === "objective")
@@ -645,7 +713,8 @@ function buildStudentSummary(user, db, papers) {
         acceptedPrograms: programs.length,
         programTotal
       };
-    });
+    })
+    .filter(Boolean);
 
   const wrongMap = new Map();
   attempts
@@ -654,7 +723,7 @@ function buildStudentSummary(user, db, papers) {
       const paper = papers.find((item) => item.id === attempt.paperId);
       (attempt.details || []).forEach((detail) => {
         if (detail.correct) return;
-        const question = (paper?.questions || []).find((item) => item.id === detail.id);
+        const question = flattenObjectiveQuestions(paper?.questions || []).find((item) => item.answerId === detail.id);
         if (!question) return;
         wrongMap.set(`${attempt.paperId}:${detail.id}`, {
           id: detail.id,
@@ -673,7 +742,7 @@ function buildStudentSummary(user, db, papers) {
 
   const progress = Array.from({ length: 8 }, (_, index) => {
     const level = index + 1;
-    const levelPapers = papers.filter((paper) => (paper.category || "gesp") === "gesp" && Number(paper.level) === level);
+    const levelPapers = papers.filter((paper) => !paper.hidden && (paper.category || "gesp") === "gesp" && Number(paper.level) === level);
     const practiced = new Set(attempts.map((attempt) => attempt.paperId));
     return {
       level,
@@ -711,7 +780,7 @@ async function api(req, res) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/papers") {
-    return sendJson(res, 200, { papers: papers.map(publicPaper) });
+    return sendJson(res, 200, { papers: papers.filter((paper) => !paper.hidden).map(publicPaper) });
   }
 
   if (req.method === "GET" && url.pathname === "/api/exam-types") {
@@ -796,16 +865,17 @@ async function api(req, res) {
     const body = await readBody(req);
     const paper = papers.find((item) => item.id === body.paperId);
     if (!paper) return sendJson(res, 404, { message: "试卷不存在。" });
+    if (paper.hidden && !isTeacher(user)) return sendJson(res, 404, { message: "试卷不存在。" });
     const answers = body.answers || {};
-    const objectiveQuestions = (paper.questions || []).filter((item) => item.type === "single" || item.type === "judge");
+    const objectiveQuestions = flattenObjectiveQuestions(paper.questions || []);
     let score = 0;
     const details = objectiveQuestions.map((question) => {
-      const raw = answers[question.id];
-      const userAnswer = question.type === "judge" ? raw === true || raw === "true" : Number(raw);
-      const correct = userAnswer === question.answer;
+      const raw = answers[question.answerId];
+      const userAnswer = normalizeAnswerValue(question, raw);
+      const correct = answersEqual(question, userAnswer);
       if (correct) score += question.score;
       return {
-        id: question.id,
+        id: question.answerId,
         correct,
         userAnswer,
         answer: question.answer,
@@ -834,6 +904,7 @@ async function api(req, res) {
     if (!user) return;
     const body = await readBody(req);
     const { paper, question } = findQuestion(papers, body.paperId, body.questionId);
+    if (paper?.hidden && !isTeacher(user)) return sendJson(res, 404, { message: "试卷不存在。" });
     if (!paper || !question || question.type !== "program") {
       return sendJson(res, 404, { message: "编程题不存在。" });
     }
@@ -957,9 +1028,10 @@ async function api(req, res) {
     if (!user) return;
     const classes = db.classes.filter((klass) => canAccessClass(user, klass, db)).map((klass) => classPayload(klass, db));
     const classIds = new Set(classes.map((klass) => klass.id));
+    const visiblePaperIds = new Set(papers.filter((paper) => !paper.hidden).map((paper) => paper.id));
     return sendJson(res, 200, {
       classes,
-      assignments: db.assignments.filter((item) => classIds.has(item.classId))
+      assignments: db.assignments.filter((item) => classIds.has(item.classId) && visiblePaperIds.has(item.paperId))
     });
   }
 

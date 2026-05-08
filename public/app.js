@@ -186,11 +186,46 @@ function route() {
 
 function paperStats(paper) {
   const questions = paper.questions || [];
+  const objective = flattenObjectiveQuestions(questions);
   return {
     fullScore: questions.reduce((sum, question) => sum + (question.score || 0), 0),
-    objective: questions.filter((question) => question.type === "single" || question.type === "judge").length,
+    objective: objective.length,
     program: questions.filter((question) => question.type === "program").length
   };
+}
+
+function isObjectiveType(type) {
+  return type === "single" || type === "judge" || type === "multi";
+}
+
+function isCompositeType(type) {
+  return type === "reading" || type === "completion";
+}
+
+function objectiveAnswerId(parent, question) {
+  return parent ? `${parent.id}__${question.id}` : question.id;
+}
+
+function flattenObjectiveQuestions(questions, parent = null) {
+  return (questions || []).flatMap((question) => {
+    if (isObjectiveType(question.type)) return [{ ...question, answerId: objectiveAnswerId(parent, question), parentId: parent?.id || "" }];
+    if (isCompositeType(question.type)) return flattenObjectiveQuestions(question.subquestions || [], question);
+    return [];
+  });
+}
+
+function answerValues(id, type) {
+  const inputs = Array.from(document.getElementsByName(id));
+  if (type === "multi") {
+    return inputs.filter((input) => input.checked).map((input) => input.value);
+  }
+  const checked = inputs.find((input) => input.checked);
+  return checked ? checked.value : "";
+}
+
+function isAnswerComplete(id, type) {
+  const value = answerValues(id, type);
+  return Array.isArray(value) ? value.length > 0 : value !== "";
 }
 
 function percent(score, fullScore) {
@@ -354,11 +389,14 @@ function renderPaper(paperId) {
     return;
   }
   const stats = paperStats(paper);
-  const objectiveQuestions = paper.questions.filter((question) => question.type === "single" || question.type === "judge");
+  const objectiveQuestions = flattenObjectiveQuestions(paper.questions);
   const groups = [
     ["一、单选题", paper.questions.filter((question) => question.type === "single")],
     ["二、判断题", paper.questions.filter((question) => question.type === "judge")],
-    ["三、编程题", paper.questions.filter((question) => question.type === "program")]
+    ["三、多选题", paper.questions.filter((question) => question.type === "multi")],
+    ["四、阅读程序题", paper.questions.filter((question) => question.type === "reading")],
+    ["五、完善程序题", paper.questions.filter((question) => question.type === "completion")],
+    ["六、编程题", paper.questions.filter((question) => question.type === "program")]
   ];
 
   app.innerHTML = `
@@ -426,7 +464,7 @@ function renderQuestionGroup(title, questions) {
 }
 
 function renderQuestion(question, index) {
-  const typeLabel = question.type === "single" ? "单选" : question.type === "judge" ? "判断" : "编程";
+  const typeLabel = questionTypeName(question.type);
   return `
     <article class="panel question" id="q-${question.id}" data-question="${question.id}" data-type="${question.type}">
       <div class="panel-body">
@@ -434,22 +472,47 @@ function renderQuestion(question, index) {
           <span>第 ${index + 1} 题 · ${typeLabel}</span>
           <span class="muted">${question.score} 分</span>
         </div>
-        ${question.type === "program" ? renderProgramQuestion(question) : renderObjectiveQuestion(question)}
+        ${renderQuestionBody(question)}
       </div>
     </article>
   `;
 }
 
-function renderObjectiveQuestion(question) {
+function questionTypeName(type) {
+  return { single: "单选", judge: "判断", multi: "多选", program: "编程", reading: "阅读程序", completion: "完善程序" }[type] || "题目";
+}
+
+function renderQuestionBody(question) {
+  if (question.type === "program") return renderProgramQuestion(question);
+  if (question.type === "reading") return renderCompositeQuestion(question, "阅读程序");
+  if (question.type === "completion") return renderCompositeQuestion(question, "完善程序");
+  return renderObjectiveQuestion(question);
+}
+
+function renderObjectiveQuestion(question, answerId = question.id, number = "") {
   const options = question.type === "judge"
     ? [{ label: "A. 正确", value: "true" }, { label: "B. 错误", value: "false" }]
-    : question.choices.map((choice, index) => ({ prefix: String.fromCharCode(65 + index), label: choice, value: String(index) }));
+    : (question.choices || []).map((choice, index) => ({ prefix: String.fromCharCode(65 + index), label: choice, value: String(index) }));
+  const inputType = question.type === "multi" ? "checkbox" : "radio";
   return `
+    <div data-objective-id="${answerId}" data-objective-type="${question.type}">
+    ${number ? `<h3>${escapeHtml(number)}</h3>` : ""}
     <div class="stem rich-text">${renderMarkdown(question.stem)}</div>
     <div class="options">
-      ${options.map((option) => `<label class="option" data-option="${question.id}:${option.value}"><input type="radio" name="${question.id}" value="${option.value}"><span class="option-content">${option.prefix ? `<span class="option-prefix">${option.prefix}.</span><span class="rich-text">${renderMarkdown(option.label)}</span>` : `<span>${escapeHtml(option.label)}</span>`}</span></label>`).join("")}
+      ${options.map((option) => `<label class="option" data-option="${answerId}:${option.value}"><input type="${inputType}" name="${answerId}" value="${option.value}"><span class="option-content">${option.prefix ? `<span class="option-prefix">${option.prefix}.</span><span class="rich-text">${renderMarkdown(option.label)}</span>` : `<span>${escapeHtml(option.label)}</span>`}</span></label>`).join("")}
     </div>
-    <div class="score-box" hidden data-explain="${question.id}"></div>
+    <div class="score-box" hidden data-explain="${answerId}"></div>
+    </div>
+  `;
+}
+
+function renderCompositeQuestion(question, label) {
+  return `
+    <div class="rich-text">${renderMarkdown(question.statement || "")}</div>
+    ${question.code ? renderCodeBlock(question.code, ' data-lang="cpp"') : ""}
+    <div class="subquestion-list">
+      ${(question.subquestions || []).map((subquestion, index) => renderObjectiveQuestion(subquestion, objectiveAnswerId(question, subquestion), `${label}小题 ${index + 1}`)).join("")}
+    </div>
   `;
 }
 
@@ -497,7 +560,9 @@ function updateAnswerCard() {
     if (!card) return;
     const done = type === "program"
       ? (document.querySelector(`#code-${id}`)?.value || "").replace(defaultCode(), "").trim().length > 0
-      : Boolean(document.querySelector(`input[name="${id}"]:checked`));
+      : isCompositeType(type)
+        ? Array.from(item.querySelectorAll("[data-objective-id]")).every((objective) => isAnswerComplete(objective.dataset.objectiveId, objective.dataset.objectiveType))
+        : isAnswerComplete(id, type);
     card.classList.toggle(type === "program" ? "program-done" : "done", done);
   });
 }
@@ -509,10 +574,11 @@ async function submitObjective(paperId) {
     return;
   }
   const answers = {};
-  document.querySelectorAll("[data-question]").forEach((item) => {
-    if (item.dataset.type === "program") return;
-    const checked = document.querySelector(`input[name="${item.dataset.question}"]:checked`);
-    if (checked) answers[item.dataset.question] = checked.value;
+  document.querySelectorAll("[data-objective-id]").forEach((item) => {
+    const value = answerValues(item.dataset.objectiveId, item.dataset.objectiveType);
+    if (Array.isArray(value) ? value.length : value !== "") {
+      answers[item.dataset.objectiveId] = value;
+    }
   });
   try {
     const data = await api("/api/submit-objective", { method: "POST", body: { paperId, answers } });
@@ -551,8 +617,10 @@ function applyObjectiveResult(details) {
     }
     document.querySelectorAll(`[data-option^="${detail.id}:"]`).forEach((option) => {
       const value = option.dataset.option.split(":")[1];
-      option.classList.toggle("correct", value === String(detail.answer));
-      option.classList.toggle("wrong", !detail.correct && value === String(detail.userAnswer));
+      const answers = Array.isArray(detail.answer) ? detail.answer.map(String) : [String(detail.answer)];
+      const userAnswers = Array.isArray(detail.userAnswer) ? detail.userAnswer.map(String) : [String(detail.userAnswer)];
+      option.classList.toggle("correct", answers.includes(value));
+      option.classList.toggle("wrong", !detail.correct && userAnswers.includes(value) && !answers.includes(value));
     });
   });
 }
@@ -649,6 +717,10 @@ function renderWrongQuestion(item) {
 
 function formatAnswer(item, value) {
   if (item.type === "judge") return value === true || value === "true" ? "正确" : "错误";
+  if (item.type === "multi") {
+    const values = Array.isArray(value) ? value : [value];
+    return values.map((entry) => String.fromCharCode(65 + Number(entry))).join("、") || "-";
+  }
   const index = Number(value);
   return Number.isFinite(index) ? String.fromCharCode(65 + index) : "-";
 }
@@ -770,13 +842,14 @@ async function renderManage() {
     const examType = examTypeById(document.querySelector("#paperCategoryInput").value);
     document.querySelector("#paperLevelField").hidden = !examType.levelEnabled;
   });
-  document.querySelector("#addSingle")?.addEventListener("click", () => addBuilderQuestion("single"));
-  document.querySelector("#addJudge")?.addEventListener("click", () => addBuilderQuestion("judge"));
-  document.querySelector("#addProgram")?.addEventListener("click", () => addBuilderQuestion("program"));
+  document.querySelectorAll("[data-add-question]").forEach((button) => button.addEventListener("click", () => addBuilderQuestion(button.dataset.addQuestion)));
+  document.querySelectorAll("[data-add-sub-question]").forEach((button) => button.addEventListener("click", () => addSubQuestion(Number(button.dataset.parentQuestion), button.dataset.addSubQuestion)));
+  document.querySelectorAll("[data-remove-sub-question]").forEach((button) => button.addEventListener("click", () => removeSubQuestion(Number(button.dataset.parentQuestion), Number(button.dataset.removeSubQuestion))));
   document.querySelectorAll("[data-remove-question]").forEach((button) => button.addEventListener("click", () => removeBuilderQuestion(Number(button.dataset.removeQuestion))));
   document.querySelectorAll("[data-insert-markdown]").forEach((button) => button.addEventListener("click", () => insertMarkdownSnippet(button)));
   document.querySelectorAll("[data-edit-paper]").forEach((button) => button.addEventListener("click", () => loadPaperIntoEditor(button.dataset.editPaper)));
   document.querySelectorAll("[data-delete-paper]").forEach((button) => button.addEventListener("click", () => deletePaperById(button.dataset.deletePaper)));
+  document.querySelectorAll("[data-toggle-paper-hidden]").forEach((button) => button.addEventListener("click", () => togglePaperHidden(button.dataset.togglePaperHidden)));
   document.querySelector("#selectAllPapers")?.addEventListener("change", toggleAllPapers);
   document.querySelector("#deleteSelectedPapers")?.addEventListener("click", deleteSelectedPapers);
   document.querySelector("#createClass")?.addEventListener("click", createClass);
@@ -843,9 +916,10 @@ function renderPaperManageRow(paper) {
       <label class="paper-check"><input type="checkbox" data-paper-select="${paper.id}"></label>
       <div>
         <h3>${escapeHtml(paper.title)}</h3>
-        <div class="meta"><span>${escapeHtml(categoryName(paper.category || "gesp"))}</span>${examTypeById(paper.category || "gesp").levelEnabled ? `<span>${paper.level} 级</span>` : ""}<span>${stats.fullScore} 分</span><span>${stats.objective} 客观题</span><span>${stats.program} 编程题</span></div>
+        <div class="meta"><span>${escapeHtml(categoryName(paper.category || "gesp"))}</span>${examTypeById(paper.category || "gesp").levelEnabled ? `<span>${paper.level} 级</span>` : ""}<span>${stats.fullScore} 分</span><span>${stats.objective} 客观题</span><span>${stats.program} 编程题</span>${paper.hidden ? `<span class="status-warn">已隐藏</span>` : ""}</div>
       </div>
       <div class="paper-row-actions">
+        <button class="secondary-btn" type="button" data-toggle-paper-hidden="${paper.id}">${paper.hidden ? "显示" : "隐藏"}</button>
         <button class="secondary-btn" type="button" data-edit-paper="${paper.id}">修改</button>
         <button class="danger-btn" type="button" data-delete-paper="${paper.id}">删除</button>
       </div>
@@ -907,6 +981,7 @@ function renderPaperBuilder(paper) {
   const questions = paper.questions || [];
   const category = paper.category || "gesp";
   const isLevelEnabled = examTypeById(category).levelEnabled;
+  const toolbar = renderQuestionAddToolbar();
   return `
     <div class="builder">
       <div class="builder-meta">
@@ -917,16 +992,28 @@ function renderPaperBuilder(paper) {
         <label><span>月份</span><input id="paperMonthInput" value="${escapeHtml(paper.month || "06")}"></label>
         <label class="span-2"><span>说明</span><input id="paperSummaryInput" value="${escapeHtml(paper.summary || "")}"></label>
       </div>
-      <div class="builder-toolbar"><button class="secondary-btn" type="button" id="addSingle">添加单选题</button><button class="secondary-btn" type="button" id="addJudge">添加判断题</button>${state.programSubmissionEnabled ? `<button class="secondary-btn" type="button" id="addProgram">添加编程题</button>` : ""}</div>
+      ${toolbar}
       <p class="builder-hint">题干、解析和编程题题面支持 Markdown，可直接粘贴 &#96;&#96;&#96;cpp 代码块。</p>
       <div class="builder-list">${questions.map((question, index) => renderBuilderQuestion(question, index)).join("") || `<div class="empty">还没有题目，先添加一题。</div>`}</div>
+      ${toolbar}
     </div>
   `;
 }
 
+function renderQuestionAddToolbar() {
+  return `<div class="builder-toolbar"><button class="secondary-btn" type="button" data-add-question="single">添加单选题</button><button class="secondary-btn" type="button" data-add-question="judge">添加判断题</button><button class="secondary-btn" type="button" data-add-question="multi">添加多选题</button><button class="secondary-btn" type="button" data-add-question="reading">添加阅读程序题</button><button class="secondary-btn" type="button" data-add-question="completion">添加完善程序题</button>${state.programSubmissionEnabled ? `<button class="secondary-btn" type="button" data-add-question="program">添加编程题</button>` : ""}</div>`;
+}
+
 function renderBuilderQuestion(question, index) {
-  const typeName = question.type === "single" ? "单选题" : question.type === "judge" ? "判断题" : "编程题";
-  return `<article class="builder-question" data-builder-question="${index}"><div class="question-head"><span>第 ${index + 1} 题 · ${typeName}</span><button class="danger-btn" type="button" data-remove-question="${index}">删除</button></div><input data-field="id" value="${escapeHtml(question.id || `q${index + 1}`)}" placeholder="题目 ID"><input data-field="score" type="number" value="${Number(question.score || 2)}" placeholder="分值">${question.type === "program" ? renderProgramBuilder(question) : renderObjectiveBuilder(question)}</article>`;
+  const typeName = `${questionTypeName(question.type)}题`;
+  const score = isCompositeType(question.type) ? (question.subquestions || []).reduce((sum, item) => sum + Number(item.score || 0), 0) : Number(question.score || 2);
+  return `<article class="builder-question" data-builder-question="${index}"><div class="question-head"><span>第 ${index + 1} 题 · ${typeName}</span><button class="danger-btn" type="button" data-remove-question="${index}">删除</button></div><input data-field="id" value="${escapeHtml(question.id || `q${index + 1}`)}" placeholder="题目 ID"><input data-field="score" type="number" value="${score}" placeholder="分值" ${isCompositeType(question.type) ? "readonly" : ""}>${renderBuilderQuestionBody(question, index)}</article>`;
+}
+
+function renderBuilderQuestionBody(question, index) {
+  if (question.type === "program") return renderProgramBuilder(question);
+  if (isCompositeType(question.type)) return renderCompositeBuilder(question, index);
+  return renderObjectiveBuilder(question);
 }
 
 function markdownInsertTools(field, choiceIndex = null) {
@@ -935,8 +1022,19 @@ function markdownInsertTools(field, choiceIndex = null) {
 }
 
 function renderObjectiveBuilder(question) {
-  const choices = question.type === "single" ? [...(question.choices || []), "", "", "", ""].slice(0, 4) : [];
-  return `${markdownInsertTools("stem")}<textarea data-field="stem" placeholder="题干，支持 Markdown 代码块">${escapeHtml(question.stem || "")}</textarea>${question.type === "single" ? `<div class="choice-editor">${choices.map((choice, index) => `<label class="choice-edit-item"><span>${String.fromCharCode(65 + index)}</span><div>${markdownInsertTools("choice", index)}<textarea data-choice="${index}" placeholder="选项内容，支持代码、图片和公式">${escapeHtml(choice)}</textarea></div></label>`).join("")}</div><label><span>正确选项</span><select data-field="answer">${choices.map((_, index) => `<option value="${index}" ${Number(question.answer || 0) === index ? "selected" : ""}>${String.fromCharCode(65 + index)}</option>`).join("")}</select></label>` : `<label><span>正确答案</span><select data-field="answer"><option value="true" ${question.answer !== false ? "selected" : ""}>正确</option><option value="false" ${question.answer === false ? "selected" : ""}>错误</option></select></label>`}${markdownInsertTools("explanation")}<textarea data-field="explanation" placeholder="解析，支持 Markdown">${escapeHtml(question.explanation || "")}</textarea>`;
+  const hasChoices = question.type === "single" || question.type === "multi";
+  const choices = hasChoices ? [...(question.choices || []), "", "", "", ""].slice(0, 4) : [];
+  const answer = Array.isArray(question.answer) ? question.answer.map(Number) : [];
+  return `${markdownInsertTools("stem")}<textarea data-field="stem" placeholder="题干，支持 Markdown 代码块">${escapeHtml(question.stem || "")}</textarea>${hasChoices ? `<div class="choice-editor">${choices.map((choice, index) => `<label class="choice-edit-item"><span>${String.fromCharCode(65 + index)}</span><div>${markdownInsertTools("choice", index)}<textarea data-choice="${index}" placeholder="选项内容，支持代码、图片和公式">${escapeHtml(choice)}</textarea></div></label>`).join("")}</div>${question.type === "multi" ? `<label><span>正确选项（可多选）</span><div class="option-answer-grid">${choices.map((_, index) => `<label class="inline-check"><input type="checkbox" data-answer-choice="${index}" ${answer.includes(index) ? "checked" : ""}>${String.fromCharCode(65 + index)}</label>`).join("")}</div></label>` : `<label><span>正确选项</span><select data-field="answer">${choices.map((_, index) => `<option value="${index}" ${Number(question.answer || 0) === index ? "selected" : ""}>${String.fromCharCode(65 + index)}</option>`).join("")}</select></label>`}` : `<label><span>正确答案</span><select data-field="answer"><option value="true" ${question.answer !== false ? "selected" : ""}>正确</option><option value="false" ${question.answer === false ? "selected" : ""}>错误</option></select></label>`}${markdownInsertTools("explanation")}<textarea data-field="explanation" placeholder="解析，支持 Markdown">${escapeHtml(question.explanation || "")}</textarea>`;
+}
+
+function renderCompositeBuilder(question, index) {
+  const subquestions = question.subquestions || [];
+  return `<input data-field="title" value="${escapeHtml(question.title || "")}" placeholder="${question.type === "reading" ? "阅读程序标题" : "完善程序标题"}">${markdownInsertTools("statement")}<textarea data-field="statement" placeholder="题目说明，支持 Markdown">${escapeHtml(question.statement || "")}</textarea><textarea data-field="code" placeholder="程序代码">${escapeHtml(question.code || "")}</textarea><div class="sub-builder-list">${subquestions.map((subquestion, subIndex) => renderSubQuestionBuilder(subquestion, index, subIndex)).join("") || `<div class="empty">还没有子题。</div>`}</div><div class="builder-toolbar"><button class="secondary-btn" type="button" data-add-sub-question="judge" data-parent-question="${index}">添加判断子题</button><button class="secondary-btn" type="button" data-add-sub-question="single" data-parent-question="${index}">添加单选子题</button><button class="secondary-btn" type="button" data-add-sub-question="multi" data-parent-question="${index}">添加多选子题</button></div>`;
+}
+
+function renderSubQuestionBuilder(question, parentIndex, subIndex) {
+  return `<article class="builder-question sub-builder-question" data-sub-question="${subIndex}"><div class="question-head"><span>子题 ${subIndex + 1} · ${questionTypeName(question.type)}题</span><button class="danger-btn" type="button" data-parent-question="${parentIndex}" data-remove-sub-question="${subIndex}">删除</button></div><input data-field="id" value="${escapeHtml(question.id || `s${subIndex + 1}`)}" placeholder="子题 ID"><input data-field="score" type="number" value="${Number(question.score || (question.type === "judge" ? 1.5 : 3))}" placeholder="分值">${renderObjectiveBuilder(question)}</article>`;
 }
 
 function renderProgramBuilder(question) {
@@ -964,6 +1062,7 @@ function collectBuilderPaper() {
     month: document.querySelector("#paperMonthInput").value.trim() || "06",
     participants: 0,
     views: 0,
+    hidden: Boolean(state.manage.editPaper?.hidden),
     summary: document.querySelector("#paperSummaryInput").value.trim(),
     questions: []
   };
@@ -980,19 +1079,42 @@ function collectBuilderPaper() {
         samples: parseCases(item.querySelector('[data-field="samplesText"]').value),
         tests: parseCases(item.querySelector('[data-field="testsText"]').value)
       });
+    } else if (isCompositeType(type)) {
+      Object.assign(question, {
+        title: item.querySelector('[data-field="title"]').value.trim(),
+        statement: item.querySelector('[data-field="statement"]').value,
+        code: item.querySelector('[data-field="code"]').value,
+        subquestions: Array.from(item.querySelectorAll("[data-sub-question]")).map((subItem) => {
+          const subSource = source.subquestions[Number(subItem.dataset.subQuestion)];
+          return collectObjectiveBuilder(subItem, subSource?.type || "single");
+        })
+      });
+      question.score = question.subquestions.reduce((sum, subquestion) => sum + Number(subquestion.score || 0), 0);
     } else {
-      question.stem = item.querySelector('[data-field="stem"]').value;
-      question.explanation = item.querySelector('[data-field="explanation"]').value;
-      if (type === "single") {
-        question.choices = Array.from(item.querySelectorAll("[data-choice]")).map((input) => input.value);
-        question.answer = Number(item.querySelector('[data-field="answer"]').value);
-      } else {
-        question.answer = item.querySelector('[data-field="answer"]').value === "true";
-      }
+      Object.assign(question, collectObjectiveBuilder(item, type));
     }
     paper.questions.push(question);
   });
   return paper;
+}
+
+function collectObjectiveBuilder(item, type) {
+  const question = {
+    id: item.querySelector('[data-field="id"]')?.value.trim() || "",
+    type,
+    score: Number(item.querySelector('[data-field="score"]')?.value || 0),
+    stem: item.querySelector('[data-field="stem"]').value,
+    explanation: item.querySelector('[data-field="explanation"]').value
+  };
+  if (type === "single" || type === "multi") {
+    question.choices = Array.from(item.querySelectorAll("[data-choice]")).map((input) => input.value);
+    question.answer = type === "multi"
+      ? Array.from(item.querySelectorAll("[data-answer-choice]:checked")).map((input) => Number(input.dataset.answerChoice))
+      : Number(item.querySelector('[data-field="answer"]').value);
+  } else {
+    question.answer = item.querySelector('[data-field="answer"]').value === "true";
+  }
+  return question;
 }
 
 function syncBuilderState() {
@@ -1019,7 +1141,7 @@ function insertAtCursor(textarea, text) {
 }
 
 function insertMarkdownSnippet(button) {
-  const question = button.closest("[data-builder-question]");
+  const question = button.closest("[data-sub-question]") || button.closest("[data-builder-question]");
   const textarea = button.dataset.targetChoice !== undefined
     ? question?.querySelector(`textarea[data-choice="${button.dataset.targetChoice}"]`)
     : question?.querySelector(`textarea[data-field="${button.dataset.targetField}"]`);
@@ -1108,8 +1230,28 @@ function addBuilderQuestion(type) {
   const base = { id, type, score: type === "program" ? 25 : 2 };
   if (type === "single") Object.assign(base, { stem: "", choices: ["", "", "", ""], answer: 0, explanation: "" });
   if (type === "judge") Object.assign(base, { stem: "", answer: true, explanation: "" });
+  if (type === "multi") Object.assign(base, { stem: "", choices: ["", "", "", ""], answer: [], explanation: "" });
+  if (type === "reading") Object.assign(base, readingQuestionTemplate(id));
+  if (type === "completion") Object.assign(base, completionQuestionTemplate(id));
   if (type === "program") Object.assign(base, { title: "", statement: "", input: "", output: "", samples: [], tests: [] });
   state.manage.editPaper.questions.push(base);
+  renderManage();
+}
+
+function addSubQuestion(parentIndex, type) {
+  syncBuilderState();
+  const parent = state.manage.editPaper.questions[parentIndex];
+  if (!parent || !isCompositeType(parent.type)) return;
+  parent.subquestions ||= [];
+  parent.subquestions.push(objectiveQuestionTemplate(type, `s${parent.subquestions.length + 1}`));
+  renderManage();
+}
+
+function removeSubQuestion(parentIndex, subIndex) {
+  syncBuilderState();
+  const parent = state.manage.editPaper.questions[parentIndex];
+  if (!parent?.subquestions) return;
+  parent.subquestions.splice(subIndex, 1);
   renderManage();
 }
 
@@ -1117,6 +1259,37 @@ function removeBuilderQuestion(index) {
   syncBuilderState();
   state.manage.editPaper.questions.splice(index, 1);
   renderManage();
+}
+
+function objectiveQuestionTemplate(type, id) {
+  if (type === "judge") return { id, type, score: 1.5, stem: "", answer: true, explanation: "" };
+  if (type === "multi") return { id, type, score: 3, stem: "", choices: ["", "", "", ""], answer: [], explanation: "" };
+  return { id, type: "single", score: 3, stem: "", choices: ["", "", "", ""], answer: 0, explanation: "" };
+}
+
+function readingQuestionTemplate(id) {
+  return {
+    title: "阅读程序",
+    statement: "阅读下面程序并回答问题。",
+    code: "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    return 0;\n}",
+    subquestions: [
+      objectiveQuestionTemplate("judge", "s1"),
+      objectiveQuestionTemplate("judge", "s2"),
+      objectiveQuestionTemplate("judge", "s3"),
+      objectiveQuestionTemplate("single", "s4"),
+      objectiveQuestionTemplate("single", "s5"),
+      objectiveQuestionTemplate("single", "s6")
+    ]
+  };
+}
+
+function completionQuestionTemplate(id) {
+  return {
+    title: "完善程序",
+    statement: "阅读题目说明和程序，选择各空应填内容。",
+    code: "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    __①__;\n    return 0;\n}",
+    subquestions: ["s1", "s2", "s3", "s4", "s5"].map((subId) => objectiveQuestionTemplate("single", subId))
+  };
 }
 
 function samplePaper() {
@@ -1131,6 +1304,7 @@ function samplePaper() {
     participants: 0,
     views: 0,
     summary: "请填写试卷说明",
+    hidden: false,
     questions: [{ id: "q1", type: "single", score: 2, stem: "示例单选题", choices: ["A 选项", "B 选项", "C 选项", "D 选项"], answer: 0, explanation: "这里写解析。" }]
   };
 }
@@ -1177,6 +1351,21 @@ async function deletePaperById(id) {
     if (state.manage.editPaper?.id === id) state.manage.editPaper = samplePaper();
     state.manage.paperView = "list";
     notify("试卷已删除。");
+    renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function togglePaperHidden(id) {
+  const paper = state.manage.papers.find((item) => item.id === id);
+  if (!paper) return;
+  try {
+    const updated = { ...paper, hidden: !paper.hidden };
+    await api("/api/admin/papers", { method: "POST", body: { paper: updated } });
+    await refreshPapers();
+    if (state.manage.editPaper?.id === id) state.manage.editPaper.hidden = updated.hidden;
+    notify(updated.hidden ? "试卷已隐藏。" : "试卷已显示。");
     renderManage();
   } catch (error) {
     notify(error.message);

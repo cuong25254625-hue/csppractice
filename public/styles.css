@@ -1421,6 +1421,65 @@ button {
   background: rgba(15, 23, 42, 0.42);
 }
 
+.submit-dialog {
+  width: min(460px, calc(100% - 28px));
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  box-shadow: var(--shadow);
+}
+
+.submit-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.submit-confirm-box {
+  padding: 18px;
+}
+
+.submit-warning {
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #fffbeb;
+}
+
+.submit-warning strong {
+  color: #92400e;
+}
+
+.submit-warning p {
+  margin: 6px 0 0;
+  color: #b45309;
+  font-size: 14px;
+}
+
+.submit-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 8px 0 4px;
+  color: var(--muted);
+}
+
+.submit-counts strong {
+  color: var(--text);
+}
+
+.submit-counts .unanswered-count {
+  color: var(--danger);
+}
+
+.submit-all-answered {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+  color: #15803d;
+}
+
 .auth-box {
   padding: 18px;
 }

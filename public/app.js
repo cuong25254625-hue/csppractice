@@ -38,7 +38,13 @@ const formulaDisplayMode = document.querySelector("#formulaDisplayMode");
 const insertFormulaSnippet = document.querySelector("#insertFormulaSnippet");
 const closeFormulaInsert = document.querySelector("#closeFormulaInsert");
 const cancelFormulaInsert = document.querySelector("#cancelFormulaInsert");
+const submitConfirmDialog = document.querySelector("#submitConfirmDialog");
+const submitStats = document.querySelector("#submitStats");
+const confirmSubmitBtn = document.querySelector("#confirmSubmit");
+const cancelSubmitBtn = document.querySelector("#cancelSubmit");
+const closeSubmitConfirm = document.querySelector("#closeSubmitConfirm");
 let pendingMarkdownTextarea = null;
+let pendingSubmitPaperId = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -577,6 +583,38 @@ async function submitObjective(paperId) {
     notify("请先登录再提交。");
     return;
   }
+  const items = document.querySelectorAll("[data-objective-id]");
+  let total = 0, answered = 0, unanswered = 0;
+  items.forEach((item) => {
+    total += 1;
+    if (isAnswerComplete(item.dataset.objectiveId, item.dataset.objectiveType)) {
+      answered += 1;
+    } else {
+      unanswered += 1;
+    }
+  });
+  if (unanswered > 0) {
+    submitStats.innerHTML = `
+      <div class="submit-warning">
+        <strong>⚠ 还有 ${unanswered} 道题未作答</strong>
+        <p>未作答的题目将计 0 分。确定要提交吗？</p>
+      </div>
+      <div class="submit-counts">
+        <span>已作答：<strong>${answered}</strong></span>
+        <span>未作答：<strong class="unanswered-count">${unanswered}</strong></span>
+        <span>共 <strong>${total}</strong> 题</span>
+      </div>
+    `;
+  } else {
+    submitStats.innerHTML = `
+      <div class="submit-all-answered">全部 <strong>${total}</strong> 道题已作答，确认提交？</div>
+    `;
+  }
+  pendingSubmitPaperId = paperId;
+  submitConfirmDialog.showModal();
+}
+
+async function doSubmitObjective(paperId) {
   const answers = {};
   document.querySelectorAll("[data-objective-id]").forEach((item) => {
     const value = answerValues(item.dataset.objectiveId, item.dataset.objectiveType);
@@ -1831,6 +1869,12 @@ formulaDisplayMode.addEventListener("change", updateFormulaSnippetPreview);
 insertFormulaSnippet.addEventListener("click", confirmFormulaInsert);
 closeFormulaInsert.addEventListener("click", () => formulaInsertDialog.close());
 cancelFormulaInsert.addEventListener("click", () => formulaInsertDialog.close());
+confirmSubmitBtn.addEventListener("click", () => {
+  submitConfirmDialog.close();
+  if (pendingSubmitPaperId) doSubmitObjective(pendingSubmitPaperId);
+});
+cancelSubmitBtn.addEventListener("click", () => submitConfirmDialog.close());
+closeSubmitConfirm.addEventListener("click", () => submitConfirmDialog.close());
 window.addEventListener("hashchange", route);
 
 init();

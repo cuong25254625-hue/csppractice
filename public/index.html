@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>初赛考级练习平台</title>
-    <link rel="stylesheet" href="/styles.css?v=20260508-study-builder">
+    <link rel="stylesheet" href="/styles.css?v=20260508-submit-confirm">
     <script>
       try {
         window.localStorage.removeItem("MathJax-Menu-Settings");
@@ -152,7 +152,24 @@
       </form>
     </dialog>
 
+    <dialog class="submit-dialog" id="submitConfirmDialog">
+      <form class="submit-confirm-box" method="dialog">
+        <div class="dialog-head">
+          <div>
+            <h2>确认提交</h2>
+            <p>提交后将自动判分并保存到练习记录。</p>
+          </div>
+          <button class="icon-btn" type="button" id="closeSubmitConfirm" aria-label="关闭">×</button>
+        </div>
+        <div id="submitStats"></div>
+        <div class="auth-actions">
+          <button class="primary-btn" type="button" id="confirmSubmit">确认提交</button>
+          <button class="secondary-btn" type="button" id="cancelSubmit">返回继续作答</button>
+        </div>
+      </form>
+    </dialog>
+
     <div class="toast" id="toast" role="status"></div>
-    <script src="/app.js?v=20260508-study-builder" defer></script>
+    <script src="/app.js?v=20260508-submit-confirm" defer></script>
   </body>
 </html>

@@ -70,6 +70,30 @@ http://localhost:5173/api/health
 - `attempts`：提交记录
 - `auditLogs`：教师/管理员操作记录
 
+试卷运行数据会写入 SQLite，同时同步一份 `data/papers.json` 作为人工检查和恢复镜像。
+
+## 备份
+
+服务启动时会自动备份一次，之后默认每 24 小时备份一次，备份目录为 `backups/`，默认保留最近 14 份。
+
+也可以手动执行：
+
+```bash
+npm run backup
+```
+
+常用生产环境参数：
+
+```bash
+BACKUP_RETENTION=14
+BACKUP_INTERVAL_HOURS=24
+MAX_ATTEMPTS=100000
+MAX_AUDIT_LOGS=10000
+SESSION_MAX_AGE_DAYS=7
+```
+
+更多上线优化计划见 [生产环境优化计划](docs/production-optimization-plan.md)。
+
 ## 编程评测
 
 编程题提交默认关闭，前端不会显示提交代码入口，后端 `/api/submit-code` 会返回暂未开放提示。

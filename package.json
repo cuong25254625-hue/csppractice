@@ -4,7 +4,8 @@
   "private": true,
   "description": "A local GESP and CSP-J/S preliminary practice platform with accounts, papers, objective grading and C++ judging.",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "backup": "node scripts/backup.js"
   },
   "engines": {
     "node": ">=18"

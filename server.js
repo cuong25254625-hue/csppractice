@@ -13,12 +13,21 @@ const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
 const MATHJAX_DIR = path.join(ROOT, "node_modules", "mathjax");
 const DATA_DIR = path.join(ROOT, "data");
+const BACKUP_DIR = path.join(ROOT, "backups");
 const DB_FILE = path.join(DATA_DIR, "db.json");
 const SQLITE_FILE = path.join(DATA_DIR, "runtime.sqlite");
 const PAPERS_FILE = path.join(DATA_DIR, "papers.json");
 const PORT = Number(process.env.PORT || 5173);
 const MAX_BODY = 1024 * 1024;
 const MAX_UPLOAD = 20 * 1024 * 1024;
+const MAX_ATTEMPTS = Number(process.env.MAX_ATTEMPTS || 100000);
+const MAX_AUDIT_LOGS = Number(process.env.MAX_AUDIT_LOGS || 10000);
+const SESSION_MAX_AGE_DAYS = Number(process.env.SESSION_MAX_AGE_DAYS || 7);
+const SESSION_MAX_AGE_MS = Math.max(1, SESSION_MAX_AGE_DAYS) * 24 * 60 * 60 * 1000;
+const BACKUP_RETENTION = Number(process.env.BACKUP_RETENTION || 14);
+const BACKUP_INTERVAL_HOURS = Number(process.env.BACKUP_INTERVAL_HOURS || 24);
+const LOGIN_MAX_FAILURES = Number(process.env.LOGIN_MAX_FAILURES || 8);
+const LOGIN_WINDOW_MS = Number(process.env.LOGIN_WINDOW_MINUTES || 15) * 60 * 1000;
 const PROGRAM_SUBMISSION_ENABLED = /^(1|true|yes)$/i.test(process.env.ENABLE_PROGRAM_SUBMISSION || "");
 
 const contentTypes = {
@@ -44,7 +53,10 @@ function readJson(file, fallback) {
 }
 
 function writeJson(file, value) {
-  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  fs.renameSync(temp, file);
 }
 
 let runtimeStore = null;
@@ -65,27 +77,50 @@ function getRuntimeStore() {
 }
 
 function loadRuntimeState() {
-  const store = getRuntimeStore();
-  const row = store.prepare("SELECT value FROM app_state WHERE key = ?").get("db");
-  if (row) return JSON.parse(row.value);
+  const state = loadStateValue("db");
+  if (state) return state;
   const imported = normalizeDb(readJson(DB_FILE, {}));
   saveDb(imported);
   return imported;
 }
 
-function saveRuntimeState(db) {
+function loadStateValue(key) {
   const store = getRuntimeStore();
-  store.prepare(`
-    INSERT INTO app_state (key, value, updatedAt)
-    VALUES (@key, @value, @updatedAt)
-    ON CONFLICT(key) DO UPDATE SET
-      value = excluded.value,
-      updatedAt = excluded.updatedAt
-  `).run({
-    key: "db",
-    value: JSON.stringify(db),
+  const row = store.prepare("SELECT value FROM app_state WHERE key = ?").get(key);
+  return row ? JSON.parse(row.value) : null;
+}
+
+function saveStateValue(key, value) {
+  const store = getRuntimeStore();
+  const transaction = store.transaction((payload) => {
+    store.prepare(`
+      INSERT INTO app_state (key, value, updatedAt)
+      VALUES (@key, @value, @updatedAt)
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updatedAt = excluded.updatedAt
+    `).run(payload);
+  });
+  transaction({
+    key,
+    value: JSON.stringify(value),
     updatedAt: new Date().toISOString()
   });
+}
+
+function saveRuntimeState(db) {
+  saveStateValue("db", db);
+}
+
+function loadPaperState() {
+  const stored = loadStateValue("papers");
+  if (Array.isArray(stored)) return stored;
+  return readJson(PAPERS_FILE, []);
+}
+
+function savePaperState(papers) {
+  saveStateValue("papers", papers);
+  writeJson(PAPERS_FILE, papers);
 }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
@@ -96,6 +131,78 @@ function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
 function verifyPassword(password, user) {
   const { hash } = hashPassword(password, user.salt);
   return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(user.passwordHash, "hex"));
+}
+
+function sessionExpiresAt(from = new Date()) {
+  return new Date(from.getTime() + SESSION_MAX_AGE_MS).toISOString();
+}
+
+function isExpired(isoTime) {
+  return Boolean(isoTime && new Date(isoTime).getTime() <= Date.now());
+}
+
+function createSession(db, user) {
+  const sid = crypto.randomBytes(32).toString("hex");
+  const now = new Date();
+  db.sessions[sid] = {
+    userId: user.id,
+    createdAt: now.toISOString(),
+    lastSeenAt: now.toISOString(),
+    expiresAt: sessionExpiresAt(now)
+  };
+  return sid;
+}
+
+function sessionCookie(req, sid, maxAgeSeconds = Math.floor(SESSION_MAX_AGE_MS / 1000)) {
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const secure = /^(1|true|yes)$/i.test(process.env.COOKIE_SECURE || "") || forwardedProto === "https" || req.socket.encrypted;
+  return [
+    `sid=${encodeURIComponent(sid)}`,
+    "HttpOnly",
+    "SameSite=Lax",
+    "Path=/",
+    `Max-Age=${maxAgeSeconds}`,
+    secure ? "Secure" : ""
+  ].filter(Boolean).join("; ");
+}
+
+function clearSessionCookie(req) {
+  return sessionCookie(req, "", 0);
+}
+
+const loginFailures = new Map();
+
+function clientIp(req) {
+  return String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+}
+
+function loginFailureKey(req, username) {
+  return `${clientIp(req)}:${String(username || "").toLowerCase()}`;
+}
+
+function isLoginLimited(req, username) {
+  const item = loginFailures.get(loginFailureKey(req, username));
+  if (!item) return false;
+  if (Date.now() - item.firstAt > LOGIN_WINDOW_MS) {
+    loginFailures.delete(loginFailureKey(req, username));
+    return false;
+  }
+  return item.count >= LOGIN_MAX_FAILURES;
+}
+
+function recordLoginFailure(req, username) {
+  const key = loginFailureKey(req, username);
+  const now = Date.now();
+  const item = loginFailures.get(key);
+  if (!item || now - item.firstAt > LOGIN_WINDOW_MS) {
+    loginFailures.set(key, { count: 1, firstAt: now });
+    return;
+  }
+  item.count += 1;
+}
+
+function clearLoginFailures(req, username) {
+  loginFailures.delete(loginFailureKey(req, username));
 }
 
 function normalizeDb(db) {
@@ -114,6 +221,14 @@ function normalizeDb(db) {
     user.status ||= "active";
     user.createdAt ||= new Date().toISOString();
     if (user.role !== "student") delete user.teacherId;
+  });
+  Object.entries(db.sessions).forEach(([sid, session]) => {
+    if (!session?.userId || isExpired(session.expiresAt)) {
+      delete db.sessions[sid];
+      return;
+    }
+    session.createdAt ||= new Date().toISOString();
+    session.expiresAt ||= sessionExpiresAt(new Date(session.createdAt));
   });
 
   seedUser(db, "admin", "admin123", "admin");
@@ -176,14 +291,84 @@ function saveDb(db) {
 }
 
 function loadPapers() {
-  return readJson(PAPERS_FILE, []).map((paper) => ({
+  return loadPaperState().map((paper) => ({
     ...paper,
     category: paper.category === "csp" ? "cspj" : (paper.category || "gesp")
   }));
 }
 
 function savePapers(papers) {
-  writeJson(PAPERS_FILE, papers);
+  savePaperState(papers);
+}
+
+function backupTimestamp() {
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+function copyIfExists(source, target) {
+  if (!fs.existsSync(source)) return false;
+  fs.copyFileSync(source, target);
+  return true;
+}
+
+async function createDataBackup(reason = "scheduled") {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  const backupName = `${backupTimestamp()}-${reason}`;
+  const targetDir = path.join(BACKUP_DIR, backupName);
+  fs.mkdirSync(targetDir, { recursive: true });
+
+  const papers = loadPapers();
+  writeJson(path.join(targetDir, "papers.json"), papers);
+  copyIfExists(DB_FILE, path.join(targetDir, "db.json"));
+
+  const sqliteBackup = path.join(targetDir, "runtime.sqlite");
+  if (fs.existsSync(SQLITE_FILE)) {
+    try {
+      await getRuntimeStore().backup(sqliteBackup);
+    } catch (error) {
+      copyIfExists(SQLITE_FILE, sqliteBackup);
+    }
+  }
+
+  writeJson(path.join(targetDir, "manifest.json"), {
+    createdAt: new Date().toISOString(),
+    reason,
+    files: fs.readdirSync(targetDir),
+    papers: papers.length
+  });
+  pruneBackups();
+  return targetDir;
+}
+
+function pruneBackups() {
+  if (!fs.existsSync(BACKUP_DIR) || BACKUP_RETENTION <= 0) return;
+  const backups = fs.readdirSync(BACKUP_DIR, { withFileTypes: true })
+    .filter((item) => item.isDirectory())
+    .map((item) => item.name)
+    .sort();
+  backups.slice(0, Math.max(0, backups.length - BACKUP_RETENTION)).forEach((name) => {
+    fs.rmSync(path.join(BACKUP_DIR, name), { recursive: true, force: true });
+  });
+}
+
+let backupInProgress = false;
+
+function scheduleBackups() {
+  if (BACKUP_INTERVAL_HOURS <= 0) return;
+  const run = async (reason) => {
+    if (backupInProgress) return;
+    backupInProgress = true;
+    try {
+      const backupPath = await createDataBackup(reason);
+      console.log(`Data backup created: ${backupPath}`);
+    } catch (error) {
+      console.error("Data backup failed:", error.message);
+    } finally {
+      backupInProgress = false;
+    }
+  };
+  run("startup");
+  setInterval(() => run("scheduled"), BACKUP_INTERVAL_HOURS * 60 * 60 * 1000).unref();
 }
 
 function parseCookies(header = "") {
@@ -199,6 +384,10 @@ function currentUser(req, db) {
   const cookies = parseCookies(req.headers.cookie);
   const session = cookies.sid && db.sessions[cookies.sid];
   if (!session) return null;
+  if (isExpired(session.expiresAt)) {
+    delete db.sessions[cookies.sid];
+    return null;
+  }
   const user = db.users.find((item) => item.id === session.userId);
   if (!user || user.status === "disabled") return null;
   return user;
@@ -568,7 +757,7 @@ function recordAttempt(db, user, attempt) {
     ...attempt
   };
   db.attempts.unshift(item);
-  db.attempts = db.attempts.slice(0, 1000);
+  db.attempts = db.attempts.slice(0, MAX_ATTEMPTS);
   saveDb(db);
   return item;
 }
@@ -582,7 +771,7 @@ function audit(db, user, action, target) {
     target,
     createdAt: new Date().toISOString()
   });
-  db.auditLogs = db.auditLogs.slice(0, 500);
+  db.auditLogs = db.auditLogs.slice(0, MAX_AUDIT_LOGS);
 }
 
 function validatePaper(input, db) {
@@ -1074,6 +1263,8 @@ async function api(req, res) {
       service: "csppractice",
       time: new Date().toISOString(),
       papers: papers.length,
+      maxAttempts: MAX_ATTEMPTS,
+      backupRetention: BACKUP_RETENTION,
       programSubmissionEnabled: PROGRAM_SUBMISSION_ENABLED
     });
   }
@@ -1125,11 +1316,10 @@ async function api(req, res) {
       createdAt: new Date().toISOString()
     };
     db.users.push(user);
-    const sid = crypto.randomBytes(24).toString("hex");
-    db.sessions[sid] = { userId: user.id, createdAt: new Date().toISOString() };
+    const sid = createSession(db, user);
     saveDb(db);
     return sendJson(res, 201, { user: publicUser(user) }, {
-      "Set-Cookie": `sid=${sid}; HttpOnly; SameSite=Lax; Path=/`
+      "Set-Cookie": sessionCookie(req, sid)
     });
   }
 
@@ -1137,15 +1327,19 @@ async function api(req, res) {
     const body = await readBody(req);
     const username = String(body.username || "").trim();
     const password = String(body.password || "");
+    if (isLoginLimited(req, username)) {
+      return sendJson(res, 429, { message: "登录失败次数过多，请稍后再试。" });
+    }
     const user = db.users.find((item) => item.username.toLowerCase() === username.toLowerCase());
     if (!user || user.status === "disabled" || !verifyPassword(password, user)) {
+      recordLoginFailure(req, username);
       return sendJson(res, 401, { message: "账号或密码不正确。" });
     }
-    const sid = crypto.randomBytes(24).toString("hex");
-    db.sessions[sid] = { userId: user.id, createdAt: new Date().toISOString() };
+    clearLoginFailures(req, username);
+    const sid = createSession(db, user);
     saveDb(db);
     return sendJson(res, 200, { user: publicUser(user) }, {
-      "Set-Cookie": `sid=${sid}; HttpOnly; SameSite=Lax; Path=/`
+      "Set-Cookie": sessionCookie(req, sid)
     });
   }
 
@@ -1154,7 +1348,7 @@ async function api(req, res) {
     if (cookies.sid) delete db.sessions[cookies.sid];
     saveDb(db);
     return sendJson(res, 200, { ok: true }, {
-      "Set-Cookie": "sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"
+      "Set-Cookie": clearSessionCookie(req)
     });
   }
 
@@ -1473,6 +1667,7 @@ async function api(req, res) {
   if (req.method === "POST" && url.pathname === "/api/classes/join") {
     const user = requireUser(req, res, db);
     if (!user) return;
+    if (user.role !== "student") return sendJson(res, 403, { message: "只有学生账号可以加入班级。" });
     const body = await readBody(req);
     const code = String(body.inviteCode || "").trim().toUpperCase();
     const klass = db.classes.find((item) => item.inviteCode === code);
@@ -1695,11 +1890,14 @@ function staticFile(req, res) {
 
 const db = loadDb();
 saveDb(db);
+savePapers(loadPapers());
+scheduleBackups();
 
 const server = http.createServer((req, res) => {
   if (req.url.startsWith("/api/")) {
     api(req, res).catch((error) => {
-      sendJson(res, 500, { message: error.message || "服务器错误。" });
+      const clientErrors = new Set(["请求体过大。", "JSON 格式不正确。", "上传文件过大。"]);
+      sendJson(res, clientErrors.has(error.message) ? 400 : 500, { message: error.message || "服务器错误。" });
     });
     return;
   }

@@ -12,6 +12,7 @@ cookies.txt
 *.log
 data/*.sqlite
 data/*.sqlite-*
+backups/
 
 .DS_Store
 Thumbs.db

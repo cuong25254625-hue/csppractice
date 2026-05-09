@@ -992,15 +992,15 @@ function renderGuide() {
 
       <div class="guide-layout">
         <aside class="guide-nav">
-          <a href="#guide-start">快速开始</a>
-          <a href="#guide-roles">账号与角色</a>
-          <a href="#guide-papers">试卷设置</a>
-          <a href="#guide-word">Word 导入导出</a>
-          <a href="#guide-classes">班级与作业</a>
-          <a href="#guide-students">学生管理</a>
-          <a href="#guide-student-view">学生端使用</a>
-          <a href="#guide-ops">更新与备份</a>
-          <a href="#guide-faq">常见问题</a>
+          <button type="button" data-guide-target="guide-start">快速开始</button>
+          <button type="button" data-guide-target="guide-roles">账号与角色</button>
+          <button type="button" data-guide-target="guide-papers">试卷设置</button>
+          <button type="button" data-guide-target="guide-word">Word 导入导出</button>
+          <button type="button" data-guide-target="guide-classes">班级与作业</button>
+          <button type="button" data-guide-target="guide-students">学生管理</button>
+          <button type="button" data-guide-target="guide-student-view">学生端使用</button>
+          <button type="button" data-guide-target="guide-ops">更新与备份</button>
+          <button type="button" data-guide-target="guide-faq">常见问题</button>
         </aside>
 
         <div class="guide-content">
@@ -1173,6 +1173,13 @@ function renderGuide() {
       </div>
     </section>
   `;
+  document.querySelectorAll("[data-guide-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.guideTarget);
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
 }
 
 function manageTabButton(id, label, active) {

@@ -589,14 +589,18 @@ button {
   background: #fff;
 }
 
-.guide-nav a {
+.guide-nav button {
+  min-height: 0;
+  border: 0;
   border-radius: 6px;
   padding: 9px 10px;
+  background: transparent;
   color: var(--text);
+  text-align: left;
   text-decoration: none;
 }
 
-.guide-nav a:hover {
+.guide-nav button:hover {
   background: #ecfeff;
   color: var(--brand);
 }

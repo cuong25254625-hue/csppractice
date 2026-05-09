@@ -43,6 +43,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .shell {
   width: min(1180px, calc(100% - 32px));
   margin: 0 auto;
@@ -1387,6 +1392,20 @@ button {
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 16px;
+}
+
+.readonly-paper {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.readonly-paper input,
+.readonly-paper textarea,
+.readonly-paper select {
+  color: var(--text);
+  opacity: 1;
+  background: #f8fafc;
 }
 
 .score-box {

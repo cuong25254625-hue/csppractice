@@ -1228,16 +1228,17 @@ function renderPaperListSection() {
 function renderPaperEditorSection() {
   const editingPaper = state.manage.editPaper || samplePaper();
   const editingExisting = state.manage.papers.some((paper) => paper.id === editingPaper.id);
+  const canEdit = !editingExisting || editingPaper.canManage !== false;
   return `
     <div class="panel">
       <div class="panel-head">
-        <h2>${editingExisting ? "修改试卷" : "创建试卷"}</h2>
+        <h2>${editingExisting ? (canEdit ? "修改试卷" : "查看试卷") : "创建试卷"}</h2>
         <button class="secondary-btn" type="button" id="backPaperList">返回管理试卷</button>
       </div>
       <div class="panel-body">
-        ${renderPaperBuilder(editingPaper)}
-        <details class="advanced-json"><summary>高级 JSON 导入/导出</summary><textarea class="json-editor compact" id="paperJson" spellcheck="false">${escapeHtml(JSON.stringify(state.manage.editPaper || samplePaper(), null, 2))}</textarea></details>
-        <div class="submit-row"><button class="primary-btn" type="button" id="savePaper">保存试卷</button><button class="secondary-btn" type="button" id="syncJson">同步到 JSON</button><span class="muted">日常用表单建卷；复杂导入可展开 JSON。</span></div>
+        ${canEdit ? renderPaperBuilder(editingPaper) : `<fieldset class="readonly-paper" disabled>${renderPaperBuilder(editingPaper)}</fieldset>`}
+        ${canEdit ? `<details class="advanced-json"><summary>高级 JSON 导入/导出</summary><textarea class="json-editor compact" id="paperJson" spellcheck="false">${escapeHtml(JSON.stringify(state.manage.editPaper || samplePaper(), null, 2))}</textarea></details>
+        <div class="submit-row"><button class="primary-btn" type="button" id="savePaper">保存试卷</button><button class="secondary-btn" type="button" id="syncJson">同步到 JSON</button><span class="muted">日常用表单建卷；复杂导入可展开 JSON。</span></div>` : `<div class="submit-row"><span class="muted">这套试卷由其他账号创建，只能查看和发布，不能修改。</span></div>`}
       </div>
     </div>
   `;
@@ -1254,17 +1255,18 @@ function filteredManagePapers() {
 
 function renderPaperManageRow(paper) {
   const stats = paperStats(paper);
+  const canManage = paper.canManage !== false;
   return `
     <article class="paper-manage-row">
       <label class="paper-check"><input type="checkbox" data-paper-select="${paper.id}"></label>
       <div>
         <h3>${escapeHtml(paper.title)}</h3>
-        <div class="meta"><span>${escapeHtml(categoryName(paper.category || "gesp"))}</span>${examTypeById(paper.category || "gesp").levelEnabled ? `<span>${paper.level} 级</span>` : ""}<span>${stats.fullScore} 分</span><span>${stats.objective} 客观题</span><span>${stats.program} 编程题</span>${paper.hidden ? `<span class="status-warn">已隐藏</span>` : ""}</div>
+        <div class="meta"><span>${escapeHtml(categoryName(paper.category || "gesp"))}</span>${examTypeById(paper.category || "gesp").levelEnabled ? `<span>${paper.level} 级</span>` : ""}<span>${stats.fullScore} 分</span><span>${stats.objective} 客观题</span><span>${stats.program} 编程题</span>${paper.hidden ? `<span class="status-warn">已隐藏</span>` : ""}${canManage ? "" : `<span>只读</span>`}</div>
       </div>
       <div class="paper-row-actions">
-        <button class="secondary-btn" type="button" data-toggle-paper-hidden="${paper.id}">${paper.hidden ? "显示" : "隐藏"}</button>
-        <button class="secondary-btn" type="button" data-edit-paper="${paper.id}">修改</button>
-        <button class="danger-btn" type="button" data-delete-paper="${paper.id}">删除</button>
+        ${canManage ? `<button class="secondary-btn" type="button" data-toggle-paper-hidden="${paper.id}">${paper.hidden ? "显示" : "隐藏"}</button>` : ""}
+        <button class="secondary-btn" type="button" data-edit-paper="${paper.id}">${canManage ? "修改" : "查看"}</button>
+        ${canManage ? `<button class="danger-btn" type="button" data-delete-paper="${paper.id}">删除</button>` : ""}
       </div>
     </article>
   `;
@@ -1807,6 +1809,13 @@ function selectedPaperIds() {
   return Array.from(document.querySelectorAll("[data-paper-select]:checked")).map((item) => item.dataset.paperSelect);
 }
 
+function editableSelectedPaperIds() {
+  return selectedPaperIds().filter((id) => {
+    const paper = state.manage.papers.find((item) => item.id === id);
+    return paper?.canManage !== false;
+  });
+}
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -1859,13 +1868,16 @@ async function importPapersFromWord(event) {
 }
 
 async function setSelectedPapersVisibility(hidden) {
-  const ids = selectedPaperIds();
-  if (!ids.length) return notify("请先勾选试卷。");
+  const selectedIds = selectedPaperIds();
+  const ids = editableSelectedPaperIds();
+  if (!selectedIds.length) return notify("请先勾选试卷。");
+  if (!ids.length) return notify("选中的试卷没有可修改项。");
   try {
     await api("/api/admin/papers/visibility", { method: "POST", body: { ids, hidden } });
     await refreshPapers();
     if (state.manage.editPaper && ids.includes(state.manage.editPaper.id)) state.manage.editPaper.hidden = hidden;
-    notify(hidden ? `已隐藏 ${ids.length} 套试卷。` : `已显示 ${ids.length} 套试卷。`);
+    const skipped = selectedIds.length - ids.length;
+    notify(`${hidden ? "已隐藏" : "已显示"} ${ids.length} 套试卷。${skipped ? `已跳过 ${skipped} 套只读试卷。` : ""}`);
     await renderManage();
   } catch (error) {
     notify(error.message);
@@ -1873,8 +1885,10 @@ async function setSelectedPapersVisibility(hidden) {
 }
 
 async function deleteSelectedPapers() {
-  const ids = selectedPaperIds();
-  if (!ids.length) return notify("请先勾选要删除的试卷。");
+  const selectedIds = selectedPaperIds();
+  const ids = editableSelectedPaperIds();
+  if (!selectedIds.length) return notify("请先勾选要删除的试卷。");
+  if (!ids.length) return notify("选中的试卷没有可删除项。");
   if (!window.confirm(`确定删除选中的 ${ids.length} 套试卷吗？`)) return;
   try {
     for (const id of ids) {
@@ -1883,7 +1897,8 @@ async function deleteSelectedPapers() {
     await refreshPapers();
     if (ids.includes(state.manage.editPaper?.id)) state.manage.editPaper = samplePaper();
     state.manage.paperView = "list";
-    notify(`已删除 ${ids.length} 套试卷。`);
+    const skipped = selectedIds.length - ids.length;
+    notify(`已删除 ${ids.length} 套试卷。${skipped ? `已跳过 ${skipped} 套只读试卷。` : ""}`);
     renderManage();
   } catch (error) {
     notify(error.message);

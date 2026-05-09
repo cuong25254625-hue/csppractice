@@ -266,6 +266,12 @@ button:disabled {
   gap: 10px;
 }
 
+.stack-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+}
+
 .json-editor {
   width: 100%;
   min-height: 430px;

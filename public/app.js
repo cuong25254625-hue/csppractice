@@ -7,6 +7,7 @@ const state = {
   authMode: "login",
   filters: { category: "all", level: "all", keyword: "" },
   programSubmissionEnabled: false,
+  allowRegistration: true,
   manage: { papers: [], overview: null, users: [], students: [], backups: [], editPaper: null, classReport: null, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" } }
 };
 
@@ -734,7 +735,7 @@ async function renderStudy() {
         <div class="panel" style="margin-top: 18px;">
           <div class="panel-head"><h2>待完成作业</h2></div>
           <ul class="paper-list">
-            ${summary.assignments.filter((item) => !item.done).map((item) => `<li class="paper-item"><span class="paper-icon">作业</span><div><h3><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a></h3><div class="meta"><span>${escapeHtml(item.className)}</span><span>截止 ${escapeHtml(item.dueAt || "长期")}</span><span>${item.bestObjective ? renderScoreBadge(item.bestObjective.score, item.bestObjective.fullScore, "客观题") : "客观题未提交"}</span><span>编程题 ${item.acceptedPrograms}/${item.programTotal}</span></div></div><a class="primary-btn" href="#/paper/${item.paperId}">去完成</a></li>`).join("") || `<li class="empty">暂无待完成作业</li>`}
+            ${summary.assignments.filter((item) => !item.done).map((item) => `<li class="paper-item"><span class="paper-icon">作业</span><div><h3><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a></h3><div class="meta"><span>${escapeHtml(item.className)}</span><span>${assignmentStatusText(item)}</span><span>${assignmentTimeText(item)}</span><span>${item.bestObjective ? renderScoreBadge(item.bestObjective.score, item.bestObjective.fullScore, "客观题") : "客观题未提交"}</span><span>编程题 ${item.acceptedPrograms}/${item.programTotal}</span></div></div><a class="${item.status === "open" ? "primary-btn" : "secondary-btn"}" href="#/paper/${item.paperId}">${item.status === "not_started" ? "预览" : "去完成"}</a></li>`).join("") || `<li class="empty">暂无待完成作业</li>`}
           </ul>
         </div>
         <div class="panel" style="margin-top: 18px;">
@@ -754,7 +755,7 @@ async function renderStudy() {
         </div>
         <div class="panel">
           <div class="panel-head"><h2>已完成作业</h2></div>
-          <div class="panel-body"><ul class="mini-list">${summary.assignments.filter((item) => item.done).slice(0, 8).map((item) => `<li><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a><span class="status-ok">完成</span></li>`).join("") || `<li class="muted">暂无</li>`}</ul></div>
+          <div class="panel-body"><ul class="mini-list">${summary.assignments.filter((item) => item.done).slice(0, 8).map((item) => `<li><span><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a><div class="muted">${escapeHtml(item.className)} · 得分 ${assignmentScoreText(item)}</div></span><a class="secondary-btn" href="#/paper/${item.paperId}">再次做题</a></li>`).join("") || `<li class="muted">暂无</li>`}</ul></div>
         </div>
       </aside>
     </div>
@@ -849,7 +850,7 @@ async function renderClasses() {
         <div class="panel">
           <div class="panel-head"><h2>${selectedClass ? `${escapeHtml(selectedClass.name)}作业` : "班级作业"}</h2><span class="muted">${classAssignments.length} 项</span></div>
           <div class="panel-body">
-            ${selectedClass ? `<ul class="mini-list">${classAssignments.map((item) => `<li><span><a href="#/paper/${item.paperId}">${escapeHtml(item.paperTitle || item.title)}</a><div class="muted">${item.dueAt ? `截止 ${escapeHtml(item.dueAt)}` : "长期"}</div></span><a class="primary-btn" href="#/paper/${item.paperId}">去完成</a></li>`).join("") || `<li class="muted">这个班级还没有发布作业</li>`}</ul>` : `<p class="muted">选择一个班级后查看作业。</p>`}
+            ${selectedClass ? `<ul class="mini-list">${classAssignments.map((item) => `<li><span><a href="#/paper/${item.paperId}">${escapeHtml(item.paperTitle || item.title)}</a><div class="muted">${assignmentTimeText(item)}</div></span><a class="primary-btn" href="#/paper/${item.paperId}">去完成</a></li>`).join("") || `<li class="muted">这个班级还没有发布作业</li>`}</ul>` : `<p class="muted">选择一个班级后查看作业。</p>`}
           </div>
         </div>
       </aside>
@@ -966,8 +967,10 @@ async function renderManage() {
   document.querySelector("#createUser")?.addEventListener("click", createUser);
   document.querySelector("#importUsers")?.addEventListener("click", importUsersFromExcel);
   document.querySelector("#createBackup")?.addEventListener("click", createBackup);
+  document.querySelector("#saveRegistrationSettings")?.addEventListener("click", saveRegistrationSettings);
   document.querySelector("#refreshBackups")?.addEventListener("click", loadBackups);
   document.querySelectorAll("[data-restore-backup]").forEach((button) => button.addEventListener("click", () => restoreBackup(button.dataset.restoreBackup)));
+  document.querySelector("#bindStudentTeacher")?.addEventListener("click", bindStudentTeacher);
   document.querySelector("#newRole")?.addEventListener("change", updateUserTeacherField);
   document.querySelector("#bulkRole")?.addEventListener("change", updateUserTeacherField);
   updateUserTeacherField();
@@ -1318,9 +1321,10 @@ function renderAssignmentPublisher(classes) {
       <div class="panel-head"><h2>发布作业</h2></div>
       <div class="panel-body">
         <div class="stack-form">
-          <select id="assignmentClass">${classes.map((klass) => `<option value="${klass.id}" ${activeClassId === klass.id ? "selected" : ""}>${escapeHtml(klass.name)}</option>`).join("")}</select>
-          <select id="assignmentPaper">${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}</select>
-          <input id="assignmentDue" type="date">
+          <label><span>发布到班级</span><select id="assignmentClass">${classes.map((klass) => `<option value="${klass.id}" ${activeClassId === klass.id ? "selected" : ""}>${escapeHtml(klass.name)}</option>`).join("")}</select></label>
+          <label><span>选择试卷</span><select id="assignmentPaper">${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}</select></label>
+          <label><span>开始时间</span><input id="assignmentStart" type="datetime-local"></label>
+          <label><span>结束时间</span><input id="assignmentEnd" type="datetime-local"></label>
           <button class="primary-btn" type="button" id="createAssignment">发布作业</button>
         </div>
       </div>
@@ -1352,6 +1356,7 @@ function renderManageSettingsSection() {
     <div class="settings-shell">
       ${renderUserAdmin()}
       <div class="settings-top-grid">
+        ${renderRegistrationAdmin()}
         ${renderBackupAdmin()}
         ${renderExamTypeAdmin()}
       </div>
@@ -1359,8 +1364,40 @@ function renderManageSettingsSection() {
   `;
 }
 
+function renderRegistrationAdmin() {
+  return `
+    <div class="panel settings-card">
+      <div class="panel-head"><h2>注册开放</h2></div>
+      <div class="panel-body">
+        <label class="inline-check"><input id="allowRegistration" type="checkbox" ${state.allowRegistration ? "checked" : ""}>允许学生公开注册</label>
+        <p class="muted settings-card-note">关闭后，登录窗口不再提供创建账号入口，学生账号需要由管理员在用户管理中创建或导入。</p>
+        <div class="settings-action-row">
+          <button class="primary-btn" type="button" id="saveRegistrationSettings">保存设置</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function statCard(label, value) {
   return `<div class="stat-card"><strong>${value}</strong><span>${label}</span></div>`;
+}
+
+function assignmentTimeText(item) {
+  const parts = [];
+  if (item.startAt) parts.push(`开始 ${escapeHtml(item.startAt.replace("T", " "))}`);
+  if (item.endAt || item.dueAt) parts.push(`结束 ${escapeHtml((item.endAt || item.dueAt).replace("T", " "))}`);
+  return parts.join("；") || "长期";
+}
+
+function assignmentStatusText(item) {
+  if (item.status === "not_started") return "未开始";
+  if (item.status === "ended") return "已结束";
+  return "进行中";
+}
+
+function assignmentScoreText(item) {
+  return item.bestObjective ? `${item.bestObjective.score}/${item.bestObjective.fullScore}` : "未提交";
 }
 
 function renderPaperBuilder(paper) {
@@ -1967,7 +2004,7 @@ function renderClassReport() {
           </tbody>
         </table>
         <h3 class="subhead">已发布作业</h3>
-        <ul class="mini-list">${assignments.map((item) => `<li><span>${escapeHtml(item.paperTitle || item.title)}<div class="muted">${item.dueAt ? `截止 ${escapeHtml(item.dueAt)}` : "未设置截止日期"}</div></span></li>`).join("") || `<li class="muted">暂无作业</li>`}</ul>
+        <ul class="mini-list">${assignments.map((item) => `<li><span>${escapeHtml(item.paperTitle || item.title)}<div class="muted">${assignmentTimeText(item)}</div></span></li>`).join("") || `<li class="muted">暂无作业</li>`}</ul>
         <h3 class="subhead">最近答题</h3>
         <ul class="mini-list">${attempts.slice(0, 6).map((item) => `<li><span>${escapeHtml(item.username || "")}<div class="muted">${escapeHtml(item.paperTitle || item.questionTitle || "")}</div></span><span class="muted">${item.type === "objective" ? `${item.score}/${item.fullScore}` : `${item.passed || 0}/${item.total || 0}`}</span></li>`).join("") || `<li class="muted">暂无答题记录</li>`}</ul>
       </div>
@@ -2069,6 +2106,18 @@ async function createBackup() {
   }
 }
 
+async function saveRegistrationSettings() {
+  try {
+    const allowRegistration = document.querySelector("#allowRegistration").checked;
+    const data = await api("/api/admin/settings", { method: "POST", body: { allowRegistration } });
+    state.allowRegistration = data.settings?.allowRegistration !== false;
+    notify("注册设置已保存。");
+    renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
 async function loadBackups(rerender = true) {
   try {
     const data = await api("/api/admin/backups");
@@ -2156,7 +2205,14 @@ async function createAssignment() {
   const paperId = document.querySelector("#assignmentPaper").value;
   if (!classId || !paperId) return notify("请先选择班级和试卷。");
   try {
-    await api(`/api/classes/${encodeURIComponent(classId)}/assignments`, { method: "POST", body: { paperId, dueAt: document.querySelector("#assignmentDue").value } });
+    await api(`/api/classes/${encodeURIComponent(classId)}/assignments`, {
+      method: "POST",
+      body: {
+        paperId,
+        startAt: document.querySelector("#assignmentStart").value,
+        endAt: document.querySelector("#assignmentEnd").value
+      }
+    });
     if (state.manage.classReport?.class?.id === classId) {
       state.manage.classReport = await api(`/api/classes/${encodeURIComponent(classId)}/report`);
     }
@@ -2187,7 +2243,9 @@ async function addStudentsToActiveClass(all) {
 
 function renderUserAdmin() {
   const teachers = state.manage.users.filter((user) => user.role === "teacher" || user.role === "admin");
+  const students = state.manage.users.filter((user) => user.role === "student");
   const teacherOptions = `<option value="">不绑定老师</option>${teachers.map((teacher) => `<option value="${teacher.id}">${escapeHtml(teacher.username)} · ${roleName(teacher.role)}</option>`).join("")}`;
+  const studentOptions = students.map((student) => `<option value="${student.id}">${escapeHtml(student.username)}${student.teacherName ? ` · 当前 ${escapeHtml(student.teacherName)}` : ""}</option>`).join("");
   return `
     <div class="panel settings-user-panel">
       <div class="panel-head"><h2>用户管理</h2><span class="muted">${state.manage.users.length} 个账号</span></div>
@@ -2213,6 +2271,14 @@ function renderUserAdmin() {
             </div>
             <p class="muted import-hint">Excel 第一行表头包含“用户名”和“密码”即可；也支持 username/password。</p>
             ${renderImportResult()}
+          </section>
+          <section class="settings-block">
+            <h3 class="subhead">绑定已有学生</h3>
+            <div class="stack-form">
+              <select id="bindStudentId">${studentOptions || `<option value="">暂无学生账号</option>`}</select>
+              <select id="bindTeacherId">${teacherOptions}</select>
+              <button class="primary-btn" type="button" id="bindStudentTeacher" ${students.length ? "" : "disabled"}>保存绑定</button>
+            </div>
           </section>
           <details class="settings-block user-list-block user-list-dropdown">
             <summary><span>最近账号</span><span class="muted">显示最近 8 个</span></summary>
@@ -2284,6 +2350,22 @@ async function importUsersFromExcel() {
   }
 }
 
+async function bindStudentTeacher() {
+  const studentId = document.querySelector("#bindStudentId")?.value;
+  const teacherId = document.querySelector("#bindTeacherId")?.value || "";
+  if (!studentId) return notify("请先选择学生账号。");
+  try {
+    await api(`/api/admin/users/${encodeURIComponent(studentId)}/role`, {
+      method: "POST",
+      body: { role: "student", status: "active", teacherId }
+    });
+    notify("学生所属老师已更新。");
+    renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
 function openAuth() {
   closeAccountMenu();
   state.authMode = "login";
@@ -2293,11 +2375,15 @@ function openAuth() {
 }
 
 function renderAuthMode() {
+  if (!state.allowRegistration && state.authMode === "register") state.authMode = "login";
   const isLogin = state.authMode === "login";
   authTitle.textContent = isLogin ? "登录" : "创建学生账号";
-  authHint.textContent = isLogin ? "登录后可以保存记录、加入班级或进入管理台。" : "公开注册只创建学生账号；教师账号由管理员创建。";
+  authHint.textContent = isLogin
+    ? (state.allowRegistration ? "登录后可以保存记录、加入班级或进入管理台。" : "公开注册已关闭，请使用管理员分配的账号登录。")
+    : "公开注册只创建学生账号；教师账号由管理员创建。";
   submitAuth.textContent = isLogin ? "登录" : "创建并登录";
   toggleAuth.textContent = isLogin ? "创建账号" : "已有账号，去登录";
+  toggleAuth.hidden = isLogin && !state.allowRegistration;
   authPassword.autocomplete = isLogin ? "current-password" : "new-password";
 }
 
@@ -2393,6 +2479,7 @@ async function refreshExamTypes() {
 async function refreshAppConfig() {
   const data = await api("/api/health");
   state.programSubmissionEnabled = Boolean(data.programSubmissionEnabled);
+  state.allowRegistration = data.settings?.allowRegistration !== false;
 }
 
 async function init() {

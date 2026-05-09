@@ -251,6 +251,8 @@ function normalizeDb(db) {
   db.auditLogs ||= [];
   db.examTypes ||= [];
   db.paperVisibility ||= {};
+  db.settings ||= {};
+  db.settings.allowRegistration = db.settings.allowRegistration !== false;
 
   db.users.forEach((user) => {
     user.role ||= "student";
@@ -272,6 +274,11 @@ function normalizeDb(db) {
   seedUser(db, "demo", "demo123", "student");
   seedExamTypes(db);
   db.examTypes = db.examTypes.filter((item) => item.id !== "csp");
+  db.assignments.forEach((assignment) => {
+    assignment.startAt ||= "";
+    assignment.endAt ||= assignment.endAt || assignment.dueAt || "";
+    assignment.dueAt = assignment.endAt;
+  });
   db.classes.forEach((klass) => {
     klass.category ||= "gesp";
     if (klass.category === "csp") klass.category = "cspj";
@@ -677,6 +684,21 @@ function publicUser(user, db = null) {
     visible.teacherName = teacher?.username || "";
   }
   return visible;
+}
+
+function publicSettings(db) {
+  return {
+    allowRegistration: db.settings?.allowRegistration !== false
+  };
+}
+
+function dateState(startAt = "", endAt = "", now = new Date()) {
+  const startTime = startAt ? new Date(startAt).getTime() : 0;
+  const endTime = endAt ? new Date(endAt).getTime() : 0;
+  const current = now.getTime();
+  if (startTime && current < startTime) return "not_started";
+  if (endTime && current > endTime) return "ended";
+  return "open";
 }
 
 function publicExamType(type) {
@@ -1463,6 +1485,7 @@ function buildStudentSummary(user, db, papers) {
       const programTotal = PROGRAM_SUBMISSION_ENABLED ? (paper?.questions || []).filter((item) => item.type === "program").length : 0;
       const objectiveDone = Boolean(objective);
       const programDone = programTotal === 0 || programs.length >= programTotal;
+      const status = dateState(assignment.startAt, assignment.endAt);
       return {
         ...assignment,
         paperTitle: paper?.title || assignment.title,
@@ -1470,7 +1493,8 @@ function buildStudentSummary(user, db, papers) {
         done: objectiveDone && programDone,
         bestObjective: objective ? { score: objective.score, fullScore: objective.fullScore } : null,
         acceptedPrograms: programs.length,
-        programTotal
+        programTotal,
+        status
       };
     })
     .filter(Boolean);
@@ -1536,7 +1560,8 @@ async function api(req, res) {
       papers: papers.length,
       maxAttempts: MAX_ATTEMPTS,
       backupRetention: BACKUP_RETENTION,
-      programSubmissionEnabled: PROGRAM_SUBMISSION_ENABLED
+      programSubmissionEnabled: PROGRAM_SUBMISSION_ENABLED,
+      settings: publicSettings(db)
     });
   }
 
@@ -1546,6 +1571,16 @@ async function api(req, res) {
 
   if (req.method === "GET" && url.pathname === "/api/exam-types") {
     return sendJson(res, 200, { examTypes: db.examTypes.map(publicExamType) });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/admin/settings") {
+    const user = requireAdmin(req, res, db);
+    if (!user) return;
+    const body = await readBody(req);
+    db.settings.allowRegistration = body.allowRegistration !== false;
+    audit(db, user, "settings:update", "allowRegistration");
+    saveDb(db);
+    return sendJson(res, 200, { settings: publicSettings(db) });
   }
 
   if (req.method === "GET" && url.pathname === "/api/me") {
@@ -1566,6 +1601,9 @@ async function api(req, res) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/register") {
+    if (db.settings?.allowRegistration === false) {
+      return sendJson(res, 403, { message: "当前已关闭公开注册，请联系管理员创建账号。" });
+    }
     const body = await readBody(req);
     const username = String(body.username || "").trim();
     const password = String(body.password || "");
@@ -1645,6 +1683,13 @@ async function api(req, res) {
     const body = await readBody(req);
     const paper = papers.find((item) => item.id === body.paperId);
     if (!paper) return sendJson(res, 404, { message: "试卷不存在。" });
+    const enrolledClassIds = new Set(db.enrollments.filter((item) => item.userId === user.id).map((item) => item.classId));
+    const userAssignments = db.assignments.filter((assignment) => assignment.paperId === paper.id && enrolledClassIds.has(assignment.classId));
+    const hasOpenAssignment = userAssignments.some((assignment) => dateState(assignment.startAt, assignment.endAt) === "open");
+    const hasPreviousAttempt = countAttempts({ userId: user.id, paperId: paper.id }) > 0;
+    if (!isTeacher(user) && userAssignments.length && !hasOpenAssignment && !hasPreviousAttempt) {
+      return sendJson(res, 403, { message: "这份作业当前不在可提交时间内。" });
+    }
     if (isPaperHidden(db, paper) && !isTeacher(user)) return sendJson(res, 404, { message: "试卷不存在。" });
     const answers = body.answers || {};
     const objectiveQuestions = flattenObjectiveQuestions(paper.questions || []);
@@ -1684,6 +1729,13 @@ async function api(req, res) {
     if (!user) return;
     const body = await readBody(req);
     const { paper, question } = findQuestion(papers, body.paperId, body.questionId);
+    const enrolledClassIds = new Set(db.enrollments.filter((item) => item.userId === user.id).map((item) => item.classId));
+    const userAssignments = paper ? db.assignments.filter((assignment) => assignment.paperId === paper.id && enrolledClassIds.has(assignment.classId)) : [];
+    const hasOpenAssignment = userAssignments.some((assignment) => dateState(assignment.startAt, assignment.endAt) === "open");
+    const hasPreviousAttempt = paper ? countAttempts({ userId: user.id, paperId: paper.id }) > 0 : false;
+    if (!isTeacher(user) && userAssignments.length && !hasOpenAssignment && !hasPreviousAttempt) {
+      return sendJson(res, 403, { message: "这份作业当前不在可提交时间内。" });
+    }
     if (isPaperHidden(db, paper) && !isTeacher(user)) return sendJson(res, 404, { message: "试卷不存在。" });
     if (!paper || !question || question.type !== "program") {
       return sendJson(res, 404, { message: "编程题不存在。" });
@@ -2080,7 +2132,9 @@ async function api(req, res) {
       classId,
       paperId: paper.id,
       title: String(body.title || paper.title).trim(),
-      dueAt: body.dueAt || "",
+      startAt: body.startAt || "",
+      endAt: body.endAt || body.dueAt || "",
+      dueAt: body.endAt || body.dueAt || "",
       createdBy: user.id,
       createdAt: new Date().toISOString()
     };
@@ -2188,7 +2242,10 @@ async function api(req, res) {
     if (!["admin", "teacher", "student"].includes(body.role)) return sendJson(res, 400, { message: "角色不正确。" });
     target.role = body.role;
     target.status = body.status === "disabled" ? "disabled" : "active";
-    if (target.role === "student") target.teacherId = normalizeStudentTeacherId(db, body.teacherId || target.teacherId);
+    if (target.role === "student") {
+      const nextTeacherId = Object.prototype.hasOwnProperty.call(body, "teacherId") ? body.teacherId : target.teacherId;
+      target.teacherId = normalizeStudentTeacherId(db, nextTeacherId);
+    }
     else delete target.teacherId;
     audit(db, user, "user:role", target.id);
     saveDb(db);

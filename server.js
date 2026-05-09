@@ -106,12 +106,12 @@ function loadRuntimeState() {
   if (state) {
     const normalized = normalizeDb(state);
     migrateAttemptsFromState(normalized.attempts);
-    normalized.attempts = loadAttempts();
+    normalized.attempts = [];
     return normalized;
   }
   const imported = normalizeDb(readJson(DB_FILE, {}));
   migrateAttemptsFromState(imported.attempts);
-  imported.attempts = loadAttempts();
+  imported.attempts = [];
   saveDb(imported);
   return imported;
 }
@@ -416,6 +416,64 @@ function loadAttempts(limit = MAX_ATTEMPTS) {
     LIMIT ?
   `).all(safeLimit);
   return rows.map(attemptFromRow);
+}
+
+function attemptQuery(filters = {}) {
+  const where = [];
+  const params = [];
+  const hasUserIds = Array.isArray(filters.userIds);
+  const hasPaperIds = Array.isArray(filters.paperIds);
+  const userIds = hasUserIds ? filters.userIds.filter(Boolean) : [];
+  const paperIds = hasPaperIds ? filters.paperIds.filter(Boolean) : [];
+  if ((hasUserIds && !userIds.length) || (hasPaperIds && !paperIds.length)) {
+    return { whereSql: "WHERE 1 = 0", params: [] };
+  }
+  if (filters.userId) {
+    where.push("userId = ?");
+    params.push(filters.userId);
+  }
+  if (userIds.length) {
+    where.push(`userId IN (${userIds.map(() => "?").join(",")})`);
+    params.push(...userIds);
+  }
+  if (filters.paperId) {
+    where.push("paperId = ?");
+    params.push(filters.paperId);
+  }
+  if (paperIds.length) {
+    where.push(`paperId IN (${paperIds.map(() => "?").join(",")})`);
+    params.push(...paperIds);
+  }
+  return {
+    whereSql: where.length ? `WHERE ${where.join(" AND ")}` : "",
+    params
+  };
+}
+
+function queryAttempts(filters = {}, limit = MAX_ATTEMPTS) {
+  const safeLimit = Number(limit || MAX_ATTEMPTS);
+  if (safeLimit <= 0) return [];
+  const { whereSql, params } = attemptQuery(filters);
+  const rows = getRuntimeStore().prepare(`
+    SELECT * FROM attempts
+    ${whereSql}
+    ORDER BY datetime(createdAt) DESC, rowid DESC
+    LIMIT ?
+  `).all(...params, safeLimit);
+  return rows.map(attemptFromRow);
+}
+
+function countAttempts(filters = {}) {
+  const { whereSql, params } = attemptQuery(filters);
+  return getRuntimeStore().prepare(`SELECT COUNT(*) AS count FROM attempts ${whereSql}`).get(...params).count || 0;
+}
+
+function countAttemptsByUser() {
+  return new Map(getRuntimeStore().prepare(`
+    SELECT userId, COUNT(*) AS count
+    FROM attempts
+    GROUP BY userId
+  `).all().map((row) => [row.userId, row.count]));
 }
 
 function migrateAttemptsFromState(attempts) {
@@ -1356,9 +1414,10 @@ function classReportPayload(klass, db, papers, viewer = null) {
   const assignments = db.assignments.filter((item) => item.classId === klass.id);
   const assignmentPaperIds = new Set(assignments.map((item) => item.paperId));
   const studentIds = new Set(students.map((item) => item.id));
-  const attempts = db.attempts
-    .filter((item) => studentIds.has(item.userId) && (assignmentPaperIds.size === 0 || assignmentPaperIds.has(item.paperId)))
-    .slice(0, 100);
+  const attempts = queryAttempts({
+    userIds: Array.from(studentIds),
+    paperIds: assignmentPaperIds.size ? Array.from(assignmentPaperIds) : null
+  }, 100);
   const studentRows = students.map((student) => {
     const studentAttempts = attempts.filter((item) => item.userId === student.id);
     const bestObjective = studentAttempts
@@ -1389,7 +1448,7 @@ function classReportPayload(klass, db, papers, viewer = null) {
 }
 
 function buildStudentSummary(user, db, papers) {
-  const attempts = db.attempts.filter((item) => item.userId === user.id);
+  const attempts = queryAttempts({ userId: user.id });
   const classIds = new Set(db.enrollments.filter((item) => item.userId === user.id).map((item) => item.classId));
   const assignments = db.assignments
     .filter((item) => classIds.has(item.classId))
@@ -1491,7 +1550,7 @@ async function api(req, res) {
 
   if (req.method === "GET" && url.pathname === "/api/me") {
     const user = currentUser(req, db);
-    const attempts = user ? db.attempts.filter((item) => item.userId === user.id).slice(0, 80) : [];
+    const attempts = user ? queryAttempts({ userId: user.id }, 80) : [];
     const classes = user ? db.classes.filter((klass) => canAccessClass(user, klass, db)).map((klass) => classPayload(klass, db, user)) : [];
     return sendJson(res, 200, {
       user: publicUser(user),
@@ -1649,16 +1708,16 @@ async function api(req, res) {
     const teacherClasses = db.classes.filter((klass) => isAdmin(user) || klass.teacherId === user.id);
     const classIds = new Set(teacherClasses.map((klass) => klass.id));
     const studentIds = new Set(db.enrollments.filter((item) => classIds.has(item.classId)).map((item) => item.userId));
-    const studentAttempts = db.attempts.filter((attempt) => studentIds.has(attempt.userId));
+    const studentIdList = Array.from(studentIds);
     return sendJson(res, 200, {
       totals: {
         papers: papers.length,
         classes: teacherClasses.length,
         students: studentIds.size,
-        attempts: studentAttempts.length
+        attempts: countAttempts({ userIds: studentIdList })
       },
       classes: teacherClasses.map((klass) => classPayload(klass, db, user)),
-      recentAttempts: studentAttempts.slice(0, 20),
+      recentAttempts: queryAttempts({ userIds: studentIdList }, 20),
       assignments: db.assignments.filter((item) => classIds.has(item.classId)).slice(0, 30)
     });
   }
@@ -2046,10 +2105,11 @@ async function api(req, res) {
   if (req.method === "GET" && url.pathname === "/api/admin/users") {
     const user = requireAdmin(req, res, db);
     if (!user) return;
+    const attemptCounts = countAttemptsByUser();
     return sendJson(res, 200, {
       users: db.users.map((item) => ({
         ...publicUser(item, db),
-        attemptCount: db.attempts.filter((attempt) => attempt.userId === item.id).length
+        attemptCount: attemptCounts.get(item.id) || 0
       }))
     });
   }

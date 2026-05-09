@@ -2255,6 +2255,20 @@ async function api(req, res) {
   return sendJson(res, 404, { message: "接口不存在。" });
 }
 
+let mutationQueue = Promise.resolve();
+
+function isMutationRequest(req) {
+  return !["GET", "HEAD", "OPTIONS"].includes(req.method);
+}
+
+function queuedApi(req, res) {
+  if (!isMutationRequest(req)) return api(req, res);
+  const run = () => api(req, res);
+  const next = mutationQueue.catch(() => {}).then(run);
+  mutationQueue = next.catch(() => {});
+  return next;
+}
+
 function staticFile(req, res) {
   const urlPath = decodeURIComponent(req.url.split("?")[0]);
   if (urlPath.startsWith("/vendor/mathjax/")) {
@@ -2294,7 +2308,7 @@ scheduleBackups();
 
 const server = http.createServer((req, res) => {
   if (req.url.startsWith("/api/")) {
-    api(req, res).catch((error) => {
+    queuedApi(req, res).catch((error) => {
       const clientErrors = new Set(["请求体过大。", "JSON 格式不正确。", "上传文件过大。"]);
       sendJson(res, clientErrors.has(error.message) ? 400 : 500, { message: error.message || "服务器错误。" });
     });

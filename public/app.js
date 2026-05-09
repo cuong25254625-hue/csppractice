@@ -8,8 +8,9 @@ const state = {
   filters: { category: "all", level: "all", keyword: "" },
   programSubmissionEnabled: false,
   allowRegistration: true,
+  dashboard: { attemptsPage: 1, attemptsPagination: null },
   study: { completedPage: 1, wrongPage: 1 },
-  manage: { papers: [], overview: null, users: [], students: [], backups: [], editPaper: null, classReport: null, classReportPages: { studentsPage: 1, attemptsPage: 1 }, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" } }
+  manage: { papers: [], overview: null, users: [], userTeachers: [], students: [], usersPagination: null, studentsPagination: null, backups: [], editPaper: null, classReport: null, overviewAttemptsPage: 1, classReportPages: { studentsPage: 1, attemptsPage: 1 }, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" } }
 };
 
 const app = document.querySelector("#app");
@@ -811,15 +812,21 @@ function renderDashboard() {
     document.querySelector("[data-open-auth]")?.addEventListener("click", openAuth);
     return;
   }
+  const attemptMeta = state.dashboard.attemptsPagination || { total: state.attempts.length };
   app.innerHTML = `
     <div class="grid">
       <section class="panel">
         <div class="panel-head"><h1>练习记录</h1><span class="muted">${escapeHtml(state.user.username)} · ${roleName(state.user.role)}</span></div>
-        ${state.attempts.length ? `<div class="panel-body"><table class="history-table"><thead><tr><th>时间</th><th>试卷</th><th>类型</th><th>结果</th></tr></thead><tbody>${state.attempts.map(renderAttemptRow).join("")}</tbody></table></div>` : `<div class="empty">还没有提交记录</div>`}
+        ${state.attempts.length ? `<div class="panel-body"><table class="history-table"><thead><tr><th>时间</th><th>试卷</th><th>类型</th><th>结果</th></tr></thead><tbody>${state.attempts.map(renderAttemptRow).join("")}</tbody></table>${renderPager(state.dashboard.attemptsPagination, "dashboard-attempts")}</div>` : `<div class="empty">还没有提交记录</div>`}
       </section>
-      <aside class="side-stack"><div class="panel"><div class="panel-head"><h2>学习进度</h2></div><div class="panel-body"><p class="muted">提交次数：${state.attempts.length}</p><p class="muted">已加入班级：${state.classes.length}</p><a class="secondary-btn" href="#/study">进入学习中心</a></div></div></aside>
+      <aside class="side-stack"><div class="panel"><div class="panel-head"><h2>学习进度</h2></div><div class="panel-body"><p class="muted">提交次数：${attemptMeta.total}</p><p class="muted">已加入班级：${state.classes.length}</p><a class="secondary-btn" href="#/study">进入学习中心</a></div></div></aside>
     </div>
   `;
+  document.querySelectorAll("[data-page-target='dashboard-attempts']").forEach((button) => button.addEventListener("click", async () => {
+    state.dashboard.attemptsPage = Math.max(1, Number(button.dataset.page || 1));
+    await refreshMe();
+    renderDashboard();
+  }));
 }
 
 function renderAttemptRow(attempt) {
@@ -902,16 +909,28 @@ async function renderManage() {
     return;
   }
   try {
+    const overviewParams = new URLSearchParams({
+      attemptsPage: String(state.manage.overviewAttemptsPage || 1)
+    });
+    const userParams = new URLSearchParams({
+      usersPage: String(state.manage.usersPagination?.page || 1)
+    });
+    const studentParams = new URLSearchParams({
+      studentsPage: String(state.manage.studentsPagination?.page || 1)
+    });
     const [overview, paperData, users, studentData] = await Promise.all([
-      api("/api/teacher/overview"),
+      api(`/api/teacher/overview?${overviewParams.toString()}`),
       api("/api/admin/papers"),
-      isAdmin() ? api("/api/admin/users") : Promise.resolve({ users: [] }),
-      api("/api/teacher/students")
+      isAdmin() ? api(`/api/admin/users?${userParams.toString()}`) : Promise.resolve({ users: [], teachers: [], pagination: {} }),
+      api(`/api/teacher/students?${studentParams.toString()}`)
     ]);
     state.manage.overview = overview;
     state.manage.papers = paperData.papers || [];
     state.manage.users = users.users || [];
+    state.manage.userTeachers = users.teachers || [];
+    state.manage.usersPagination = users.pagination?.users || null;
     state.manage.students = studentData.students || [];
+    state.manage.studentsPagination = studentData.pagination?.students || null;
   } catch (error) {
     notify(error.message);
   }
@@ -993,6 +1012,18 @@ async function renderManage() {
     if (button.dataset.pageTarget === "report-attempts") state.manage.classReportPages.attemptsPage = page;
     const classId = state.manage.classReport?.class?.id;
     if (classId) loadClassReport(classId);
+  }));
+  document.querySelectorAll("[data-page-target='overview-attempts']").forEach((button) => button.addEventListener("click", () => {
+    state.manage.overviewAttemptsPage = Math.max(1, Number(button.dataset.page || 1));
+    renderManage();
+  }));
+  document.querySelectorAll("[data-page-target='manage-users']").forEach((button) => button.addEventListener("click", () => {
+    state.manage.usersPagination = { ...(state.manage.usersPagination || {}), page: Math.max(1, Number(button.dataset.page || 1)) };
+    renderManage();
+  }));
+  document.querySelectorAll("[data-page-target='manage-students']").forEach((button) => button.addEventListener("click", () => {
+    state.manage.studentsPagination = { ...(state.manage.studentsPagination || {}), page: Math.max(1, Number(button.dataset.page || 1)) };
+    renderManage();
   }));
   document.querySelector("#createAssignment")?.addEventListener("click", createAssignment);
   document.querySelector("#addSelectedStudents")?.addEventListener("click", () => addStudentsToActiveClass(false));
@@ -1341,7 +1372,21 @@ function renderManageClassesSection(overview) {
       </div>
       <div class="side-stack">
         ${renderAssignmentPublisher(classes)}
+        ${renderOverviewRecentAttempts(overview)}
         ${renderClassReport()}
+      </div>
+    </div>
+  `;
+}
+
+function renderOverviewRecentAttempts(overview) {
+  const attempts = overview.recentAttempts || [];
+  return `
+    <div class="panel action-panel">
+      <div class="panel-head"><h2>最近答题</h2><span class="muted">${overview.pagination?.recentAttempts?.total ?? attempts.length} 条</span></div>
+      <div class="panel-body">
+        <ul class="mini-list">${attempts.map((item) => `<li><span>${escapeHtml(item.username || "")}<div class="muted">${escapeHtml(item.paperTitle || item.questionTitle || "")}</div></span><span class="muted">${item.type === "objective" ? `${item.score}/${item.fullScore}` : `${item.passed || 0}/${item.total || 0}`}</span></li>`).join("") || `<li class="muted">暂无答题记录</li>`}</ul>
+        ${renderPager(overview.pagination?.recentAttempts, "overview-attempts")}
       </div>
     </div>
   `;
@@ -2060,6 +2105,7 @@ function renderClassStudentAdder(klass) {
         <button class="secondary-btn" type="button" id="addSelectedStudents" ${candidates.length ? "" : "disabled"}>添加选中学生</button>
         <button class="primary-btn" type="button" id="addAllStudents" ${candidates.length ? "" : "disabled"}>添加全部可选学生</button>
       </div>
+      ${renderPager(state.manage.studentsPagination, "manage-students")}
     </div>
   `;
 }
@@ -2284,13 +2330,14 @@ async function addStudentsToActiveClass(all) {
 }
 
 function renderUserAdmin() {
-  const teachers = state.manage.users.filter((user) => user.role === "teacher" || user.role === "admin");
-  const students = state.manage.users.filter((user) => user.role === "student");
+  const teachers = state.manage.userTeachers.length ? state.manage.userTeachers : state.manage.users.filter((user) => user.role === "teacher" || user.role === "admin");
+  const students = state.manage.students || [];
   const teacherOptions = `<option value="">不绑定老师</option>${teachers.map((teacher) => `<option value="${teacher.id}">${escapeHtml(teacher.username)} · ${roleName(teacher.role)}</option>`).join("")}`;
   const studentOptions = students.map((student) => `<option value="${student.id}">${escapeHtml(student.username)}${student.teacherName ? ` · 当前 ${escapeHtml(student.teacherName)}` : ""}</option>`).join("");
+  const userTotal = state.manage.usersPagination?.total ?? state.manage.users.length;
   return `
     <div class="panel settings-user-panel">
-      <div class="panel-head"><h2>用户管理</h2><span class="muted">${state.manage.users.length} 个账号</span></div>
+      <div class="panel-head"><h2>用户管理</h2><span class="muted">${userTotal} 个账号</span></div>
       <div class="panel-body">
         <div class="user-admin-grid">
           <section class="settings-block">
@@ -2323,8 +2370,9 @@ function renderUserAdmin() {
             </div>
           </section>
           <details class="settings-block user-list-block user-list-dropdown">
-            <summary><span>最近账号</span><span class="muted">显示最近 8 个</span></summary>
-            <ul class="mini-list user-admin-list">${state.manage.users.slice(0, 8).map((user) => `<li><span>${escapeHtml(user.username)}<div class="muted">${roleName(user.role)}${user.teacherName ? ` · ${escapeHtml(user.teacherName)}` : ""}</div></span><span class="muted">${user.attemptCount} 次</span></li>`).join("")}</ul>
+            <summary><span>账号列表</span><span class="muted">分页显示</span></summary>
+            <ul class="mini-list user-admin-list">${state.manage.users.map((user) => `<li><span>${escapeHtml(user.username)}<div class="muted">${roleName(user.role)}${user.teacherName ? ` · ${escapeHtml(user.teacherName)}` : ""}</div></span><span class="muted">${user.attemptCount} 次</span></li>`).join("")}</ul>
+            ${renderPager(state.manage.usersPagination, "manage-users")}
           </details>
         </div>
       </div>
@@ -2451,6 +2499,8 @@ async function logout() {
   state.user = null;
   state.attempts = [];
   state.classes = [];
+  state.dashboard.attemptsPage = 1;
+  state.dashboard.attemptsPagination = null;
   updateAuthButton();
   route();
   notify("已退出登录。");
@@ -2501,9 +2551,13 @@ function updateAuthButton() {
 }
 
 async function refreshMe() {
-  const data = await api("/api/me");
+  const params = new URLSearchParams({
+    attemptsPage: String(state.dashboard.attemptsPage || 1)
+  });
+  const data = await api(`/api/me?${params.toString()}`);
   state.user = data.user;
   state.attempts = data.attempts || [];
+  state.dashboard.attemptsPagination = data.pagination?.attempts || null;
   state.classes = data.classes || [];
   updateAuthButton();
 }

@@ -1037,6 +1037,13 @@ function paginationMeta(total, page, pageSize) {
   };
 }
 
+function paginateItems(items, page) {
+  return {
+    items: items.slice(page.offset, page.offset + page.pageSize),
+    meta: paginationMeta(items.length, page.page, page.pageSize)
+  };
+}
+
 function currentUser(req, db) {
   const cookies = parseCookies(req.headers.cookie);
   const session = getSession(cookies.sid);
@@ -1995,12 +2002,17 @@ async function api(req, res) {
 
   if (req.method === "GET" && url.pathname === "/api/me") {
     const user = currentUser(req, db);
-    const attempts = user ? queryAttempts({ userId: user.id }, 80) : [];
+    const attemptPage = pageOptions(url, "attempts", 20, 100);
+    const attemptTotal = user ? countAttempts({ userId: user.id }) : 0;
+    const attempts = user ? queryAttempts({ userId: user.id }, attemptPage.pageSize, attemptPage.offset) : [];
     const classes = user ? db.classes.filter((klass) => canAccessClass(user, klass, db)).map((klass) => classPayload(klass, db, user)) : [];
     return sendJson(res, 200, {
       user: publicUser(user),
       attempts,
-      classes
+      classes,
+      pagination: {
+        attempts: paginationMeta(attemptTotal, attemptPage.page, attemptPage.pageSize)
+      }
     });
   }
 
@@ -2172,34 +2184,47 @@ async function api(req, res) {
   if (req.method === "GET" && url.pathname === "/api/teacher/overview") {
     const user = requireTeacher(req, res, db);
     if (!user) return;
+    const attemptPage = pageOptions(url, "attempts", 20, 100);
     const teacherClasses = db.classes.filter((klass) => isAdmin(user) || klass.teacherId === user.id);
     const classIds = new Set(teacherClasses.map((klass) => klass.id));
     const studentIds = new Set(db.enrollments.filter((item) => classIds.has(item.classId)).map((item) => item.userId));
     const studentIdList = Array.from(studentIds);
+    const totalAttempts = countAttempts({ userIds: studentIdList });
     return sendJson(res, 200, {
       totals: {
         papers: papers.length,
         classes: teacherClasses.length,
         students: studentIds.size,
-        attempts: countAttempts({ userIds: studentIdList })
+        attempts: totalAttempts
       },
       classes: teacherClasses.map((klass) => classPayload(klass, db, user)),
-      recentAttempts: queryAttempts({ userIds: studentIdList }, 20),
-      assignments: db.assignments.filter((item) => classIds.has(item.classId)).slice(0, 30)
+      recentAttempts: queryAttempts({ userIds: studentIdList }, attemptPage.pageSize, attemptPage.offset),
+      assignments: db.assignments.filter((item) => classIds.has(item.classId)).slice(0, 30),
+      pagination: {
+        recentAttempts: paginationMeta(totalAttempts, attemptPage.page, attemptPage.pageSize)
+      }
     });
   }
 
   if (req.method === "GET" && url.pathname === "/api/teacher/students") {
     const user = requireTeacher(req, res, db);
     if (!user) return;
-    const students = db.users
+    const studentPage = pageOptions(url, "students", 50, 200);
+    const allStudents = db.users
       .filter((item) => item.role === "student" && item.status !== "disabled")
-      .filter((item) => isAdmin(user) || item.teacherId === user.id)
+      .filter((item) => isAdmin(user) || item.teacherId === user.id);
+    const paged = paginateItems(allStudents, studentPage);
+    const students = paged.items
       .map((item) => ({
         ...publicUser(item, db),
         enrolledClassIds: db.enrollments.filter((enrollment) => enrollment.userId === item.id).map((enrollment) => enrollment.classId)
       }));
-    return sendJson(res, 200, { students });
+    return sendJson(res, 200, {
+      students,
+      pagination: {
+        students: paged.meta
+      }
+    });
   }
 
   if (req.method === "GET" && url.pathname === "/api/admin/papers") {
@@ -2579,12 +2604,21 @@ async function api(req, res) {
   if (req.method === "GET" && url.pathname === "/api/admin/users") {
     const user = requireAdmin(req, res, db);
     if (!user) return;
+    const userPage = pageOptions(url, "users", 30, 200);
     const attemptCounts = countAttemptsByUser();
+    const paged = paginateItems(db.users, userPage);
+    const teachers = db.users
+      .filter((item) => (item.role === "teacher" || item.role === "admin") && item.status !== "disabled")
+      .map((item) => publicUser(item, db));
     return sendJson(res, 200, {
-      users: db.users.map((item) => ({
+      users: paged.items.map((item) => ({
         ...publicUser(item, db),
         attemptCount: attemptCounts.get(item.id) || 0
-      }))
+      })),
+      teachers,
+      pagination: {
+        users: paged.meta
+      }
     });
   }
 

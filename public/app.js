@@ -2029,7 +2029,7 @@ function renderBackupAdmin() {
               <li>
                 <span>
                   <strong>${escapeHtml(backup.name)}</strong>
-                  <div class="muted">${escapeHtml(formatDateTime(backup.createdAt))} · ${escapeHtml(backup.reason || "manual")} · ${backup.papers || 0} 套试卷</div>
+                  <div class="muted">${escapeHtml(formatDateTime(backup.createdAt))} · ${escapeHtml(backup.reason || "manual")} · ${backup.papers || 0} 套试卷 · ${backup.attempts || 0} 条提交</div>
                 </span>
                 <button class="danger-btn" type="button" data-restore-backup="${escapeHtml(backup.name)}">恢复</button>
               </li>

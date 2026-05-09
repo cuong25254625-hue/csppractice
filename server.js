@@ -73,13 +73,45 @@ function getRuntimeStore() {
       updatedAt TEXT NOT NULL
     )
   `).run();
+  runtimeStore.prepare(`
+    CREATE TABLE IF NOT EXISTS attempts (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      username TEXT NOT NULL,
+      type TEXT NOT NULL,
+      paperId TEXT,
+      paperTitle TEXT,
+      questionId TEXT,
+      questionTitle TEXT,
+      classId TEXT,
+      score REAL,
+      fullScore REAL,
+      status TEXT,
+      passed INTEGER,
+      total INTEGER,
+      detailsJson TEXT,
+      payloadJson TEXT NOT NULL,
+      createdAt TEXT NOT NULL
+    )
+  `).run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_attempts_user_created ON attempts (userId, createdAt DESC)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_attempts_paper_created ON attempts (paperId, createdAt DESC)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_attempts_class_created ON attempts (classId, createdAt DESC)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_attempts_user_paper_created ON attempts (userId, paperId, createdAt DESC)").run();
   return runtimeStore;
 }
 
 function loadRuntimeState() {
   const state = loadStateValue("db");
-  if (state) return state;
+  if (state) {
+    const normalized = normalizeDb(state);
+    migrateAttemptsFromState(normalized.attempts);
+    normalized.attempts = loadAttempts();
+    return normalized;
+  }
   const imported = normalizeDb(readJson(DB_FILE, {}));
+  migrateAttemptsFromState(imported.attempts);
+  imported.attempts = loadAttempts();
   saveDb(imported);
   return imported;
 }
@@ -108,8 +140,12 @@ function saveStateValue(key, value) {
   });
 }
 
+function runtimeStateForStorage(db) {
+  return { ...normalizeDb(db), attempts: [] };
+}
+
 function saveRuntimeState(db) {
-  saveStateValue("db", db);
+  saveStateValue("db", runtimeStateForStorage(db));
 }
 
 function loadPaperState() {
@@ -301,6 +337,114 @@ function savePapers(papers) {
   savePaperState(papers);
 }
 
+function attemptFromRow(row) {
+  const payload = JSON.parse(row.payloadJson || "{}");
+  return {
+    ...payload,
+    id: row.id,
+    userId: row.userId,
+    username: row.username,
+    type: row.type,
+    paperId: row.paperId || payload.paperId,
+    paperTitle: row.paperTitle || payload.paperTitle,
+    questionId: row.questionId || payload.questionId,
+    questionTitle: row.questionTitle || payload.questionTitle,
+    classId: row.classId || payload.classId,
+    score: row.score ?? payload.score,
+    fullScore: row.fullScore ?? payload.fullScore,
+    status: row.status || payload.status,
+    passed: row.passed ?? payload.passed,
+    total: row.total ?? payload.total,
+    details: row.detailsJson ? JSON.parse(row.detailsJson) : payload.details,
+    createdAt: row.createdAt
+  };
+}
+
+function attemptPayload(attempt) {
+  return {
+    id: attempt.id,
+    userId: attempt.userId,
+    username: attempt.username,
+    type: attempt.type || "",
+    paperId: attempt.paperId || null,
+    paperTitle: attempt.paperTitle || null,
+    questionId: attempt.questionId || null,
+    questionTitle: attempt.questionTitle || null,
+    classId: attempt.classId || null,
+    score: attempt.score ?? null,
+    fullScore: attempt.fullScore ?? null,
+    status: attempt.status || null,
+    passed: attempt.passed ?? null,
+    total: attempt.total ?? null,
+    detailsJson: attempt.details ? JSON.stringify(attempt.details) : null,
+    payloadJson: JSON.stringify(attempt),
+    createdAt: attempt.createdAt
+  };
+}
+
+function insertAttempt(attempt) {
+  const store = getRuntimeStore();
+  store.prepare(`
+    INSERT OR REPLACE INTO attempts (
+      id, userId, username, type, paperId, paperTitle, questionId, questionTitle,
+      classId, score, fullScore, status, passed, total, detailsJson, payloadJson, createdAt
+    ) VALUES (
+      @id, @userId, @username, @type, @paperId, @paperTitle, @questionId, @questionTitle,
+      @classId, @score, @fullScore, @status, @passed, @total, @detailsJson, @payloadJson, @createdAt
+    )
+  `).run(attemptPayload(attempt));
+}
+
+function pruneAttempts() {
+  if (MAX_ATTEMPTS <= 0) return;
+  getRuntimeStore().prepare(`
+    DELETE FROM attempts
+    WHERE id NOT IN (
+      SELECT id FROM attempts
+      ORDER BY datetime(createdAt) DESC, rowid DESC
+      LIMIT ?
+    )
+  `).run(MAX_ATTEMPTS);
+}
+
+function loadAttempts(limit = MAX_ATTEMPTS) {
+  const safeLimit = Number(limit || MAX_ATTEMPTS);
+  if (safeLimit <= 0) return [];
+  const rows = getRuntimeStore().prepare(`
+    SELECT * FROM attempts
+    ORDER BY datetime(createdAt) DESC, rowid DESC
+    LIMIT ?
+  `).all(safeLimit);
+  return rows.map(attemptFromRow);
+}
+
+function migrateAttemptsFromState(attempts) {
+  if (!Array.isArray(attempts) || !attempts.length) return;
+  const store = getRuntimeStore();
+  const transaction = store.transaction((items) => {
+    items.forEach((attempt) => {
+      if (!attempt?.id || !attempt.userId || !attempt.createdAt) return;
+      insertAttempt(attempt);
+    });
+  });
+  transaction(attempts);
+  pruneAttempts();
+}
+
+function replaceAttempts(attempts) {
+  const items = Array.isArray(attempts) ? attempts : [];
+  const store = getRuntimeStore();
+  const transaction = store.transaction(() => {
+    store.prepare("DELETE FROM attempts").run();
+    items.forEach((attempt) => {
+      if (!attempt?.id || !attempt.userId || !attempt.createdAt) return;
+      insertAttempt(attempt);
+    });
+  });
+  transaction();
+  pruneAttempts();
+}
+
 function backupTimestamp() {
   return new Date().toISOString().replace(/[:.]/g, "-");
 }
@@ -329,7 +473,8 @@ function publicBackupInfo(name) {
     createdAt: manifest.createdAt || fs.statSync(targetDir).mtime.toISOString(),
     reason: manifest.reason || name.split("-").pop() || "manual",
     files,
-    papers: manifest.papers || 0
+    papers: manifest.papers || 0,
+    attempts: manifest.attempts || 0
   };
 }
 
@@ -352,6 +497,18 @@ function readBackupSqliteValue(sqliteFile, key) {
   }
 }
 
+function readBackupAttempts(sqliteFile) {
+  if (!fs.existsSync(sqliteFile)) return null;
+  const backupDb = new Database(sqliteFile, { readonly: true });
+  try {
+    const table = backupDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'attempts'").get();
+    if (!table) return null;
+    return backupDb.prepare("SELECT * FROM attempts ORDER BY datetime(createdAt) DESC, rowid DESC").all().map(attemptFromRow);
+  } finally {
+    backupDb.close();
+  }
+}
+
 function readBackupPayload(name) {
   const targetDir = backupDirByName(name);
   const sqliteFile = path.join(targetDir, "runtime.sqlite");
@@ -359,7 +516,9 @@ function readBackupPayload(name) {
   const paperState = readBackupSqliteValue(sqliteFile, "papers") || readJson(path.join(targetDir, "papers.json"), null);
   if (!dbState) throw new Error("备份缺少运行数据。");
   if (!Array.isArray(paperState)) throw new Error("备份缺少试卷数据。");
-  return { db: normalizeDb(dbState), papers: paperState };
+  const normalizedDb = normalizeDb(dbState);
+  const attempts = readBackupAttempts(sqliteFile) || normalizedDb.attempts || [];
+  return { db: normalizedDb, papers: paperState, attempts };
 }
 
 async function createDataBackup(reason = "scheduled") {
@@ -385,7 +544,8 @@ async function createDataBackup(reason = "scheduled") {
     createdAt: new Date().toISOString(),
     reason,
     files: fs.readdirSync(targetDir),
-    papers: papers.length
+    papers: papers.length,
+    attempts: loadAttempts().length
   });
   pruneBackups();
   return targetDir;
@@ -807,9 +967,10 @@ function recordAttempt(db, user, attempt) {
     createdAt: new Date().toISOString(),
     ...attempt
   };
+  insertAttempt(item);
+  pruneAttempts();
   db.attempts.unshift(item);
   db.attempts = db.attempts.slice(0, MAX_ATTEMPTS);
-  saveDb(db);
   return item;
 }
 
@@ -1577,10 +1738,12 @@ async function api(req, res) {
       saveDb(restoredDb);
       writeJson(DB_FILE, restoredDb);
       savePapers(payload.papers);
+      replaceAttempts(payload.attempts);
       return sendJson(res, 200, {
         restored: {
           name,
           papers: payload.papers.length,
+          attempts: payload.attempts.length,
           safetyBackup: path.basename(safetyDir)
         }
       });

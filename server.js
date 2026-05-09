@@ -311,6 +311,57 @@ function copyIfExists(source, target) {
   return true;
 }
 
+function backupDirByName(name) {
+  const safeName = String(name || "").trim();
+  if (!/^[A-Za-z0-9._-]+$/.test(safeName)) throw new Error("备份名称不正确。");
+  const targetDir = path.resolve(BACKUP_DIR, safeName);
+  if (!targetDir.startsWith(path.resolve(BACKUP_DIR) + path.sep)) throw new Error("备份名称不正确。");
+  if (!fs.existsSync(targetDir) || !fs.statSync(targetDir).isDirectory()) throw new Error("备份不存在。");
+  return targetDir;
+}
+
+function publicBackupInfo(name) {
+  const targetDir = backupDirByName(name);
+  const manifest = readJson(path.join(targetDir, "manifest.json"), {});
+  const files = fs.readdirSync(targetDir).filter((file) => fs.statSync(path.join(targetDir, file)).isFile());
+  return {
+    name,
+    createdAt: manifest.createdAt || fs.statSync(targetDir).mtime.toISOString(),
+    reason: manifest.reason || name.split("-").pop() || "manual",
+    files,
+    papers: manifest.papers || 0
+  };
+}
+
+function listDataBackups() {
+  if (!fs.existsSync(BACKUP_DIR)) return [];
+  return fs.readdirSync(BACKUP_DIR, { withFileTypes: true })
+    .filter((item) => item.isDirectory())
+    .map((item) => publicBackupInfo(item.name))
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+
+function readBackupSqliteValue(sqliteFile, key) {
+  if (!fs.existsSync(sqliteFile)) return null;
+  const backupDb = new Database(sqliteFile, { readonly: true });
+  try {
+    const row = backupDb.prepare("SELECT value FROM app_state WHERE key = ?").get(key);
+    return row ? JSON.parse(row.value) : null;
+  } finally {
+    backupDb.close();
+  }
+}
+
+function readBackupPayload(name) {
+  const targetDir = backupDirByName(name);
+  const sqliteFile = path.join(targetDir, "runtime.sqlite");
+  const dbState = readBackupSqliteValue(sqliteFile, "db") || readJson(path.join(targetDir, "db.json"), null);
+  const paperState = readBackupSqliteValue(sqliteFile, "papers") || readJson(path.join(targetDir, "papers.json"), null);
+  if (!dbState) throw new Error("备份缺少运行数据。");
+  if (!Array.isArray(paperState)) throw new Error("备份缺少试卷数据。");
+  return { db: normalizeDb(dbState), papers: paperState };
+}
+
 async function createDataBackup(reason = "scheduled") {
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
   const backupName = `${backupTimestamp()}-${reason}`;
@@ -1473,7 +1524,7 @@ async function api(req, res) {
   if (req.method === "POST" && url.pathname === "/api/admin/backup") {
     const user = requireAdmin(req, res, db);
     if (!user) return;
-    if (backupInProgress) return sendJson(res, 409, { message: "备份正在进行中，请稍后再试。" });
+    if (backupInProgress) return sendJson(res, 409, { message: "数据维护正在进行中，请稍后再试。" });
     backupInProgress = true;
     try {
       const targetDir = await createDataBackup("manual");
@@ -1487,6 +1538,50 @@ async function api(req, res) {
           files: manifest.files || [],
           papers: manifest.papers || 0,
           createdAt: manifest.createdAt || new Date().toISOString()
+        }
+      });
+    } finally {
+      backupInProgress = false;
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/admin/backups") {
+    const user = requireAdmin(req, res, db);
+    if (!user) return;
+    return sendJson(res, 200, { backups: listDataBackups() });
+  }
+
+  const backupRestore = url.pathname.match(/^\/api\/admin\/backups\/([^/]+)\/restore$/);
+  if (req.method === "POST" && backupRestore) {
+    const user = requireAdmin(req, res, db);
+    if (!user) return;
+    if (backupInProgress) return sendJson(res, 409, { message: "数据维护正在进行中，请稍后再试。" });
+    const name = decodeURIComponent(backupRestore[1]);
+    const payload = readBackupPayload(name);
+    backupInProgress = true;
+    try {
+      const safetyDir = await createDataBackup("pre-restore");
+      const restoredDb = normalizeDb(payload.db);
+      const cookies = parseCookies(req.headers.cookie);
+      const restoredUser = restoredDb.users.find((item) => item.id === user.id) || restoredDb.users.find((item) => item.username === user.username && item.role === "admin");
+      if (cookies.sid && restoredUser) {
+        const now = new Date();
+        restoredDb.sessions[cookies.sid] = {
+          userId: restoredUser.id,
+          createdAt: now.toISOString(),
+          lastSeenAt: now.toISOString(),
+          expiresAt: sessionExpiresAt(now)
+        };
+      }
+      audit(restoredDb, user, "backup:restore", name);
+      saveDb(restoredDb);
+      writeJson(DB_FILE, restoredDb);
+      savePapers(payload.papers);
+      return sendJson(res, 200, {
+        restored: {
+          name,
+          papers: payload.papers.length,
+          safetyBackup: path.basename(safetyDir)
         }
       });
     } finally {

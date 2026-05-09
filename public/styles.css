@@ -764,6 +764,46 @@ button:disabled {
   word-break: break-word;
 }
 
+.backup-restore-box {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.backup-restore-box > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 12px;
+  font-weight: 700;
+}
+
+.backup-restore-box > summary::-webkit-details-marker {
+  display: none;
+}
+
+.backup-list {
+  border-top: 1px solid var(--line);
+}
+
+.backup-list li {
+  align-items: center;
+  padding: 12px;
+}
+
+.backup-list li > span {
+  min-width: 0;
+}
+
+.backup-list strong,
+.backup-list .muted {
+  overflow-wrap: anywhere;
+}
+
 .settings-compact-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);

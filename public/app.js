@@ -7,7 +7,7 @@ const state = {
   authMode: "login",
   filters: { category: "all", level: "all", keyword: "" },
   programSubmissionEnabled: false,
-  manage: { papers: [], overview: null, users: [], students: [], editPaper: null, classReport: null, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" } }
+  manage: { papers: [], overview: null, users: [], students: [], backups: [], editPaper: null, classReport: null, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" } }
 };
 
 const app = document.querySelector("#app");
@@ -966,6 +966,8 @@ async function renderManage() {
   document.querySelector("#createUser")?.addEventListener("click", createUser);
   document.querySelector("#importUsers")?.addEventListener("click", importUsersFromExcel);
   document.querySelector("#createBackup")?.addEventListener("click", createBackup);
+  document.querySelector("#refreshBackups")?.addEventListener("click", loadBackups);
+  document.querySelectorAll("[data-restore-backup]").forEach((button) => button.addEventListener("click", () => restoreBackup(button.dataset.restoreBackup)));
   document.querySelector("#newRole")?.addEventListener("change", updateUserTeacherField);
   document.querySelector("#bulkRole")?.addEventListener("change", updateUserTeacherField);
   updateUserTeacherField();
@@ -1152,6 +1154,8 @@ function renderGuide() {
                 <li><strong>data/runtime.sqlite：</strong>账号、班级、作业、提交记录、隐藏状态等运行数据。</li>
                 <li><strong>.env：</strong>如果服务器上配置过环境变量，也建议备份。</li>
               </ul>
+              <h3>后台备份与恢复</h3>
+              <p>管理员可在“系统设置 - 数据备份”中一键备份，也可以查看备份列表并恢复到某个备份。恢复前系统会自动创建一份当前数据的安全备份。</p>
               <h3>备份命令示例</h3>
               <pre class="code-block"><code><span class="code-line">BACKUP=~/csppractice-backup-$(date +%Y%m%d-%H%M%S)</span><span class="code-line">mkdir -p "$BACKUP"</span><span class="code-line">cp data/papers.json "$BACKUP/"</span><span class="code-line">cp data/runtime.sqlite "$BACKUP/" 2>/dev/null || true</span><span class="code-line">cp .env "$BACKUP/" 2>/dev/null || true</span></code></pre>
             </div>
@@ -1994,6 +1998,7 @@ function renderExamTypeAdmin() {
 }
 
 function renderBackupAdmin() {
+  const backups = state.manage.backups || [];
   return `
     <div class="panel settings-card">
       <div class="panel-head"><h2>数据备份</h2></div>
@@ -2001,11 +2006,33 @@ function renderBackupAdmin() {
         <p class="muted settings-card-note">立即备份当前运行数据、试卷镜像和 SQLite 数据库，备份文件保存在服务器的 backups 目录。</p>
         <div class="settings-action-row">
           <button class="primary-btn" type="button" id="createBackup">一键备份</button>
+          <button class="secondary-btn" type="button" id="refreshBackups">查看备份</button>
         </div>
         <div class="backup-result muted" id="backupResult">自动备份会在服务启动时执行，之后按配置定时执行。</div>
+        <details class="backup-restore-box" ${backups.length ? "open" : ""}>
+          <summary><span>可恢复备份</span><span class="muted">${backups.length ? `${backups.length} 份` : "点击查看备份"}</span></summary>
+          <ul class="mini-list backup-list">
+            ${backups.map((backup) => `
+              <li>
+                <span>
+                  <strong>${escapeHtml(backup.name)}</strong>
+                  <div class="muted">${escapeHtml(formatDateTime(backup.createdAt))} · ${escapeHtml(backup.reason || "manual")} · ${backup.papers || 0} 套试卷</div>
+                </span>
+                <button class="danger-btn" type="button" data-restore-backup="${escapeHtml(backup.name)}">恢复</button>
+              </li>
+            `).join("") || `<li class="muted">还没有加载备份列表。</li>`}
+          </ul>
+        </details>
       </div>
     </div>
   `;
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
 }
 
 async function createBackup() {
@@ -2019,12 +2046,39 @@ async function createBackup() {
     if (result) {
       result.innerHTML = `备份完成：<strong>${escapeHtml(backup.name || "")}</strong><br>文件：${(backup.files || []).map(escapeHtml).join("、") || "无"}；试卷 ${backup.papers || 0} 套。`;
     }
+    await loadBackups(false);
     notify("备份已完成。");
   } catch (error) {
     if (result) result.textContent = error.message;
     notify(error.message);
   } finally {
     if (button) button.disabled = false;
+  }
+}
+
+async function loadBackups(rerender = true) {
+  try {
+    const data = await api("/api/admin/backups");
+    state.manage.backups = data.backups || [];
+    if (rerender) renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function restoreBackup(name) {
+  if (!name) return;
+  const message = `确定恢复到备份 ${name} 吗？\n\n恢复前系统会自动创建一份当前数据的安全备份。恢复后当前账号、班级、作业、提交记录和试卷会回到该备份状态。`;
+  if (!window.confirm(message)) return;
+  try {
+    const data = await api(`/api/admin/backups/${encodeURIComponent(name)}/restore`, { method: "POST" });
+    const restored = data.restored || {};
+    state.manage.backups = [];
+    notify(`已恢复备份。安全备份：${restored.safetyBackup || "已创建"}`);
+    await Promise.all([refreshPapers(), refreshMe(), refreshExamTypes()]);
+    renderManage();
+  } catch (error) {
+    notify(error.message);
   }
 }
 

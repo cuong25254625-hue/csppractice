@@ -583,6 +583,40 @@ button:disabled {
   color: #fff;
 }
 
+.study-tabs {
+  display: flex;
+  gap: 0;
+  margin-top: 18px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.study-tab-btn {
+  flex: 1;
+  padding: 12px 16px;
+  border: none;
+  background: #fff;
+  color: var(--text-muted);
+  font-size: 0.95em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.study-tab-btn + .study-tab-btn {
+  border-left: 1px solid var(--line);
+}
+
+.study-tab-btn.active {
+  background: #0f766e;
+  color: #fff;
+}
+
+.study-tab-btn:hover:not(.active) {
+  background: #f0fdfa;
+}
+
 .manage-class-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
@@ -598,11 +632,19 @@ button:disabled {
 }
 
 .class-manage-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 12px;
 }
 
 .class-manage-toolbar input {
-  width: 100%;
+  max-width: 360px;
+  flex: 1;
+}
+
+.class-manage-toolbar button {
+  flex-shrink: 0;
 }
 
 .class-detail-summary {
@@ -1270,7 +1312,42 @@ button:disabled {
   list-style: none;
 }
 
-.completed-assignment-item,
+.completed-assignment-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+
+.completed-assignment-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.completed-assignment-class {
+  font-size: 0.82em;
+  flex-shrink: 0;
+}
+
+.completed-assignment-times {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.completed-assignment-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
 .class-assignment-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -1285,6 +1362,13 @@ button:disabled {
 .completed-assignment-main,
 .class-assignment-main {
   min-width: 0;
+}
+
+.completed-assignment-main .muted,
+.class-assignment-main .meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .completed-assignment-title,
@@ -2173,14 +2257,16 @@ mjx-container.mjx-explorer-active > mjx-help {
     width: max-content;
   }
 
-  .completed-assignment-item,
   .class-assignment-item {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .completed-assignment-item .compact-action,
   .class-assignment-item .compact-action {
     grid-column: 1 / -1;
+    width: max-content;
+  }
+
+  .completed-assignment-item .compact-action {
     width: max-content;
   }
 

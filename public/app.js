@@ -9,7 +9,7 @@ const state = {
   programSubmissionEnabled: false,
   allowRegistration: true,
   dashboard: { attemptsPage: 1, attemptsPagination: null },
-  study: { completedPage: 1, wrongPage: 1 },
+  study: { completedPage: 1, wrongPage: 1, activeTab: "pending" },
   manage: { papers: [], overview: null, users: [], userTeachers: [], students: [], usersPagination: null, studentsPagination: null, backups: [], editPaper: null, classReport: null, overviewAttemptsPage: 1, classReportPages: { studentsPage: 1, attemptsPage: 1 }, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" }, classKeyword: "" }
 };
 
@@ -728,6 +728,32 @@ async function renderStudy() {
   }
   const pendingAssignments = summary.pendingAssignments || summary.assignments.filter((item) => !item.done);
   const completedAssignments = summary.completedAssignments || summary.assignments.filter((item) => item.done);
+  const activeTab = state.study.activeTab || "pending";
+
+  const renderTabContent = () => {
+    if (activeTab === "pending") {
+      return `
+        <div class="panel">
+          <div class="panel-head"><h2>待完成作业</h2><span class="muted">${pendingAssignments.length} 个</span></div>
+          <ul class="paper-list">
+            ${pendingAssignments.map((item) => `<li class="paper-item"><span class="paper-icon">作业</span><div><h3><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a></h3><div class="meta"><span>${escapeHtml(item.className)}</span><span>${assignmentStatusText(item)}</span><span>${assignmentTimeText(item)}</span><span>${item.bestObjective ? renderScoreBadge(item.bestObjective.score, item.bestObjective.fullScore, "客观题") : "客观题未提交"}</span><span>编程题 ${item.acceptedPrograms}/${item.programTotal}</span></div></div><a class="${item.status === "open" ? "primary-btn" : "secondary-btn"}" href="#/paper/${item.paperId}">${item.status === "not_started" ? "预览" : "去完成"}</a></li>`).join("") || `<li class="empty">暂无待完成作业</li>`}
+          </ul>
+        </div>`;
+    }
+    if (activeTab === "completed") {
+      return `
+        <div class="panel">
+          <div class="panel-head"><h2>已完成作业</h2><span class="muted">${summary.pagination?.completedAssignments?.total ?? completedAssignments.length} 个</span></div>
+          <div class="panel-body"><ul class="completed-assignment-list">${completedAssignments.map(renderCompletedAssignmentItem).join("") || `<li class="muted">暂无</li>`}</ul>${renderPager(summary.pagination?.completedAssignments, "study-completed")}</div>
+        </div>`;
+    }
+    return `
+      <div class="panel">
+        <div class="panel-head"><h2>错题本</h2><span class="muted">${summary.pagination?.wrongQuestions?.total ?? summary.wrongQuestions.length} 题</span></div>
+        <div class="panel-body wrong-list">${renderWrongBook(summary.wrongQuestions)}${renderPager(summary.pagination?.wrongQuestions, "study-wrong")}</div>
+      </div>`;
+  };
+
   app.innerHTML = `
     <div class="grid">
       <section>
@@ -740,16 +766,12 @@ async function renderStudy() {
             ${statCard("错题", summary.totals.wrongQuestions)}
           </div>
         </div>
-        <div class="panel" style="margin-top: 18px;">
-          <div class="panel-head"><h2>待完成作业</h2></div>
-          <ul class="paper-list">
-            ${pendingAssignments.map((item) => `<li class="paper-item"><span class="paper-icon">作业</span><div><h3><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a></h3><div class="meta"><span>${escapeHtml(item.className)}</span><span>${assignmentStatusText(item)}</span><span>${assignmentTimeText(item)}</span><span>${item.bestObjective ? renderScoreBadge(item.bestObjective.score, item.bestObjective.fullScore, "客观题") : "客观题未提交"}</span><span>编程题 ${item.acceptedPrograms}/${item.programTotal}</span></div></div><a class="${item.status === "open" ? "primary-btn" : "secondary-btn"}" href="#/paper/${item.paperId}">${item.status === "not_started" ? "预览" : "去完成"}</a></li>`).join("") || `<li class="empty">暂无待完成作业</li>`}
-          </ul>
+        <div class="study-tabs">
+          <button class="study-tab-btn ${activeTab === "pending" ? "active" : ""}" type="button" data-study-tab="pending">待完成作业</button>
+          <button class="study-tab-btn ${activeTab === "completed" ? "active" : ""}" type="button" data-study-tab="completed">已完成作业</button>
+          <button class="study-tab-btn ${activeTab === "wrong" ? "active" : ""}" type="button" data-study-tab="wrong">错题本</button>
         </div>
-        <div class="panel" style="margin-top: 18px;">
-          <div class="panel-head"><h2>错题本</h2><span class="muted">${summary.pagination?.wrongQuestions?.total ?? summary.wrongQuestions.length} 题</span></div>
-          <div class="panel-body wrong-list">${renderWrongBook(summary.wrongQuestions)}${renderPager(summary.pagination?.wrongQuestions, "study-wrong")}</div>
-        </div>
+        ${renderTabContent()}
       </section>
       <aside class="side-stack">
         <div class="panel">
@@ -761,13 +783,15 @@ async function renderStudy() {
             }).join("")}
           </div>
         </div>
-        <div class="panel">
-          <div class="panel-head"><h2>已完成作业</h2></div>
-          <div class="panel-body"><ul class="completed-assignment-list">${completedAssignments.map(renderCompletedAssignmentItem).join("") || `<li class="muted">暂无</li>`}</ul>${renderPager(summary.pagination?.completedAssignments, "study-completed")}</div>
-        </div>
       </aside>
     </div>
   `;
+  document.querySelectorAll("[data-study-tab]").forEach((button) => button.addEventListener("click", () => {
+    state.study.activeTab = button.dataset.studyTab;
+    state.study.completedPage = 1;
+    state.study.wrongPage = 1;
+    renderStudy();
+  }));
   document.querySelectorAll("[data-page-target^='study-']").forEach((button) => button.addEventListener("click", () => {
     const page = Math.max(1, Number(button.dataset.page || 1));
     if (button.dataset.pageTarget === "study-completed") state.study.completedPage = page;
@@ -815,17 +839,36 @@ function assignmentScoreBadge(item) {
 function renderCompletedAssignmentItem(item) {
   return `
     <li class="completed-assignment-item">
-      <div class="completed-assignment-main">
+      <div class="completed-assignment-header">
         <a class="completed-assignment-title" href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a>
-        <div class="muted">${escapeHtml(item.className)} · ${assignmentTimeText(item)}</div>
+        <span class="completed-assignment-class muted">${escapeHtml(item.className)}</span>
       </div>
-      ${assignmentScoreBadge(item)}
-      <a class="secondary-btn compact-action" href="#/paper/${item.paperId}">再次做题</a>
+      <div class="completed-assignment-times">
+        ${item.startAt ? `<div class="muted">开始 ${escapeHtml(item.startAt.replace("T", " "))}</div>` : ""}
+        ${item.endAt || item.dueAt ? `<div class="muted">结束 ${escapeHtml((item.endAt || item.dueAt).replace("T", " "))}</div>` : ""}
+        ${!item.startAt && !item.endAt && !item.dueAt ? `<div class="muted">长期</div>` : ""}
+      </div>
+      <div class="completed-assignment-footer">
+        ${assignmentScoreBadge(item)}
+        <a class="secondary-btn compact-action" href="#/paper/${item.paperId}">再次做题</a>
+      </div>
     </li>
   `;
 }
 
 function renderClassAssignmentItem(item) {
+  const isTeacherRole = state.user && (state.user.role === "teacher" || state.user.role === "admin");
+  if (isTeacherRole) {
+    return `
+      <li class="class-assignment-item">
+        <div class="class-assignment-main">
+          <a class="class-assignment-title" href="#/paper/${item.paperId}">${escapeHtml(item.paperTitle || item.title)}</a>
+          <div class="meta"><span>${assignmentTimeText(item)}</span></div>
+        </div>
+        <a class="primary-btn compact-action" href="#/paper/${item.paperId}">查看试卷</a>
+      </li>
+    `;
+  }
   return `
     <li class="class-assignment-item">
       <div class="class-assignment-main">
@@ -1057,19 +1100,11 @@ async function renderManage() {
     renderManage();
   });
   document.querySelector("#classKeyword")?.addEventListener("input", (event) => {
-    const keyword = event.target.value.trim().toLowerCase();
     state.manage.classKeyword = event.target.value;
-    let visible = 0;
-    document.querySelectorAll("[data-class-card-search]").forEach((card) => {
-      const matched = !keyword || String(card.dataset.classCardSearch || "").includes(keyword);
-      card.hidden = !matched;
-      if (matched) visible += 1;
-    });
-    const total = state.manage.overview?.classes?.length || 0;
-    const countText = document.querySelector("#classCountText");
-    if (countText) countText.textContent = `${visible} / ${total} 个班级`;
-    const noResults = document.querySelector("#classNoResults");
-    if (noResults) noResults.hidden = visible > 0;
+  });
+  document.querySelector("#classSearchBtn")?.addEventListener("click", () => {
+    state.manage.classKeyword = document.querySelector("#classKeyword")?.value || "";
+    renderManage();
   });
   document.querySelector("[data-back-class-list]")?.addEventListener("click", (event) => {
     event.preventDefault();
@@ -1441,12 +1476,11 @@ function renderManageClassesSection(overview) {
         <div class="panel-head"><h2>班级管理</h2><span class="muted" id="classCountText">${filtered.length} / ${classes.length} 个班级</span></div>
         <div class="panel-body">
           <div class="class-manage-toolbar">
-            <input id="classKeyword" placeholder="搜索班级、教师或邀请码" value="${escapeHtml(state.manage.classKeyword || "")}">
+            <input id="classKeyword" placeholder="搜索班级、教师或邀请码" value="${escapeHtml(state.manage.classKeyword || "")}"><button class="primary-btn compact-action" type="button" id="classSearchBtn">搜索</button>
           </div>
           <div class="stack-form class-create-form"><input id="className" placeholder="班级名称，如 周六一级班"><select id="classCategory">${state.examTypes.map((type) => `<option value="${type.id}">${escapeHtml(type.name)}</option>`).join("")}</select><select id="classLevel">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}">${index + 1} 级</option>`).join("")}</select><button class="primary-btn" type="button" id="createClass">创建班级</button></div>
           <div class="class-card-list">
-            ${classes.map(renderClassManageCard).join("") || `<div class="empty">暂无班级，先创建一个班级。</div>`}
-            ${classes.length ? `<div class="empty" id="classNoResults" ${filtered.length ? "hidden" : ""}>没有匹配的班级。</div>` : ""}
+            ${filtered.map(renderClassManageCard).join("") || `<div class="empty">${keyword ? "没有匹配的班级。" : "暂无班级，先创建一个班级。"}</div>`}
           </div>
         </div>
     </div>
@@ -1519,10 +1553,8 @@ function renderAssignmentPublisher(classes) {
 
 function renderClassManageCard(klass) {
   const active = state.manage.classReport?.class?.id === klass.id;
-  const searchText = `${klass.name} ${klass.teacherName} ${klass.categoryName || categoryName(klass.category)} ${klass.inviteCode || ""}`.toLowerCase();
-  const keyword = (state.manage.classKeyword || "").trim().toLowerCase();
   return `
-    <article class="class-manage-card ${active ? "active" : ""}" data-class-card-search="${escapeHtml(searchText)}" ${keyword && !searchText.includes(keyword) ? "hidden" : ""}>
+    <article class="class-manage-card ${active ? "active" : ""}">
       <div>
         <h3>${escapeHtml(klass.name)}</h3>
         <div class="meta"><span>${escapeHtml(klass.categoryName || categoryName(klass.category))}</span>${klass.level ? `<span>${klass.level} 级</span>` : ""}<span>邀请码 ${escapeHtml(klass.inviteCode)}</span></div>

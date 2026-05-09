@@ -10,7 +10,7 @@ const state = {
   allowRegistration: true,
   dashboard: { attemptsPage: 1, attemptsPagination: null },
   study: { completedPage: 1, wrongPage: 1, activeTab: "pending" },
-  manage: { papers: [], overview: null, users: [], userTeachers: [], students: [], usersPagination: null, studentsPagination: null, backups: [], editPaper: null, classReport: null, overviewAttemptsPage: 1, classReportPages: { studentsPage: 1, attemptsPage: 1 }, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" }, classKeyword: "" }
+  manage: { papers: [], overview: null, users: [], userTeachers: [], students: [], usersPagination: null, studentsPagination: null, backups: [], editPaper: null, classReport: null, overviewAttemptsPage: 1, classReportPages: { studentsPage: 1, attemptsPage: 1 }, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" }, classKeyword: "", classDetailTab: "students" }
 };
 
 const app = document.querySelector("#app");
@@ -1109,9 +1109,14 @@ async function renderManage() {
   document.querySelector("[data-back-class-list]")?.addEventListener("click", (event) => {
     event.preventDefault();
     state.manage.classReport = null;
+    state.manage.classDetailTab = "students";
     history.replaceState(null, "", "#/manage");
     renderManage();
   });
+  document.querySelectorAll("[data-class-detail-tab]").forEach((button) => button.addEventListener("click", () => {
+    state.manage.classDetailTab = button.dataset.classDetailTab;
+    renderManage();
+  }));
   document.querySelector("#createClass")?.addEventListener("click", createClass);
   document.querySelector("#classCategory")?.addEventListener("change", updateClassLevelVisibility);
   updateClassLevelVisibility();
@@ -1489,22 +1494,104 @@ function renderManageClassesSection(overview) {
 
 function renderClassManagementDetail(overview) {
   const report = state.manage.classReport;
+  if (!report) return "";
   const classes = overview.classes || [];
+  const activeTab = state.manage.classDetailTab || "students";
   return `
     <div class="manage-class-detail">
       <div class="panel">
         <div class="panel-head"><h2>${escapeHtml(report.class.name)}</h2><a class="secondary-btn compact-action" href="#/manage" data-back-class-list>返回班级列表</a></div>
         <div class="panel-body">
-          ${renderClassReport()}
+          ${renderClassHeader(report)}
+          <div class="class-detail-tabs">
+            <button class="class-detail-tab-btn ${activeTab === "students" ? "active" : ""}" type="button" data-class-detail-tab="students">学生</button>
+            <button class="class-detail-tab-btn ${activeTab === "assignments" ? "active" : ""}" type="button" data-class-detail-tab="assignments">作业</button>
+            <button class="class-detail-tab-btn ${activeTab === "attempts" ? "active" : ""}" type="button" data-class-detail-tab="attempts">答题</button>
+          </div>
+          ${activeTab === "students" ? renderClassStudentsTab(report) : ""}
+          ${activeTab === "assignments" ? renderClassAssignmentsTab(report, classes) : ""}
+          ${activeTab === "attempts" ? renderClassAttemptsTab(report) : ""}
         </div>
-      </div>
-      <div class="side-stack">
-        ${renderAssignmentPublisher(classes)}
-        ${renderPublishedAssignments(report)}
-        ${renderClassRecentAttempts(report)}
       </div>
     </div>
   `;
+}
+
+function renderClassHeader(report) {
+  const klass = report.class;
+  const assignments = report.assignments || [];
+  const students = report.students || [];
+  const studentMeta = report.pagination?.students || { total: students.length };
+  const attemptMeta = report.pagination?.recentAttempts || { total: students.reduce((sum, s) => sum + Number(s.attemptCount || 0), 0) };
+  return `
+    <div class="class-report-card">
+      <div class="class-detail-summary">
+        <div class="meta"><span>${escapeHtml(klass.categoryName || categoryName(klass.category))}${klass.level ? ` · ${klass.level} 级` : ""}</span><span>邀请码 ${escapeHtml(klass.inviteCode || "")}</span><a href="#/classes/${encodeURIComponent(klass.id)}">查看学生端作业页</a></div>
+        <div class="stat-grid compact-stats">
+          ${statCard("学生", studentMeta.total)}
+          ${statCard("作业", assignments.length)}
+          ${statCard("答题", attemptMeta.total)}
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderClassStudentsTab(report) {
+  const klass = report.class;
+  const students = report.students || [];
+  return `
+    <div class="class-report-grid">
+      ${renderClassStudentAdder(klass)}
+      <section>
+        <h3 class="subhead">学生列表</h3>
+        <table class="report-table">
+          <thead><tr><th>学生</th><th>练习</th><th>客观题最好成绩</th><th>编程通过</th></tr></thead>
+          <tbody>
+            ${students.map((student) => `<tr><td>${escapeHtml(student.username)}</td><td>${student.attemptCount} 次</td><td>${student.bestObjective ? `${renderScoreBadge(student.bestObjective.score, student.bestObjective.fullScore, "最好")}<div class="muted">${escapeHtml(student.bestObjective.paperTitle || "")}</div>` : `<span class="muted">暂无</span>`}</td><td>${student.acceptedPrograms} 题</td></tr>`).join("") || `<tr><td colspan="4" class="muted">暂无学生</td></tr>`}
+          </tbody>
+        </table>
+        ${renderPager(report.pagination?.students, "report-students")}
+      </section>
+    </div>`;
+}
+
+function renderClassAssignmentsTab(report, classes) {
+  const assignments = report.assignments || [];
+  return `
+    <div class="class-tab-content">
+      ${renderAssignmentPublisher(classes)}
+      <div class="panel" style="margin-top: 18px;">
+        <div class="panel-head"><h2>已发布作业</h2><span class="muted">${assignments.length} 个</span></div>
+        <div class="panel-body">
+          <ul class="paper-list">${assignments.map((item) => `<li class="paper-item"><span class="paper-icon">作业</span><div><h3><a href="#/paper/${item.paperId}">${escapeHtml(item.paperTitle || item.title)}</a></h3><div class="meta"><span>${assignmentTimeText(item)}</span></div></div><a class="primary-btn compact-action" href="#/paper/${item.paperId}">查看试卷</a></li>`).join("") || `<li class="empty">暂无作业</li>`}</ul>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderClassAttemptsTab(report) {
+  const students = report.students || [];
+  const attempts = report.recentAttempts || [];
+  return `
+    <div class="class-tab-content">
+      <section>
+        <h3 class="subhead">学生练习数据</h3>
+        <table class="report-table">
+          <thead><tr><th>学生</th><th>练习</th><th>客观题最好成绩</th><th>编程通过</th></tr></thead>
+          <tbody>
+            ${students.map((student) => `<tr><td>${escapeHtml(student.username)}</td><td>${student.attemptCount} 次</td><td>${student.bestObjective ? `${renderScoreBadge(student.bestObjective.score, student.bestObjective.fullScore, "最好")}<div class="muted">${escapeHtml(student.bestObjective.paperTitle || "")}</div>` : `<span class="muted">暂无</span>`}</td><td>${student.acceptedPrograms} 题</td></tr>`).join("") || `<tr><td colspan="4" class="muted">暂无学生数据</td></tr>`}
+          </tbody>
+        </table>
+        ${renderPager(report.pagination?.students, "report-students")}
+      </section>
+      <div class="panel" style="margin-top: 18px;">
+        <div class="panel-head"><h2>最近答题</h2><span class="muted">${report.pagination?.recentAttempts?.total ?? attempts.length} 条</span></div>
+        <div class="panel-body">
+          <ul class="mini-list">${attempts.map((item) => `<li><span>${escapeHtml(item.username || "")}<div class="muted">${escapeHtml(item.paperTitle || item.questionTitle || "")}</div></span><span class="muted">${item.type === "objective" ? `${item.score}/${item.fullScore}` : `${item.passed || 0}/${item.total || 0}`}</span></li>`).join("") || `<li class="muted">暂无答题记录</li>`}</ul>
+          ${renderPager(report.pagination?.recentAttempts, "report-attempts")}
+        </div>
+      </div>
+    </div>`;
 }
 
 function renderPublishedAssignments(report) {
@@ -2128,10 +2215,31 @@ async function exportPapersToWord(ids) {
   }
 }
 
+function showImportProgress() {
+  const container = document.querySelector(".paper-manage-list");
+  if (!container) return;
+  let bar = document.querySelector("#importProgressBar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "importProgressBar";
+    bar.className = "import-progress-bar";
+    bar.innerHTML = `<div class="import-progress-fill"></div><span class="import-progress-text">正在导入 Word 试卷…</span>`;
+  }
+  bar.querySelector(".import-progress-fill").style.width = "0%";
+  const fill = bar.querySelector(".import-progress-fill");
+  container.parentNode.insertBefore(bar, container);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      fill.style.width = "90%";
+    });
+  });
+}
+
 async function importPapersFromWord(event) {
   const file = event.target.files?.[0];
   event.target.value = "";
   if (!file) return;
+  showImportProgress();
   const body = new FormData();
   body.append("file", file);
   try {
@@ -2144,6 +2252,7 @@ async function importPapersFromWord(event) {
     renderManage();
   } catch (error) {
     notify(error.message);
+    renderManage();
   }
 }
 
@@ -2190,43 +2299,6 @@ function updateClassLevelVisibility() {
   const levelInput = document.querySelector("#classLevel");
   if (!categoryInput || !levelInput) return;
   levelInput.hidden = !examTypeById(categoryInput.value).levelEnabled;
-}
-
-function renderClassReport() {
-  const report = state.manage.classReport;
-  if (!report) {
-    return "";
-  }
-  const klass = report.class;
-  const assignments = report.assignments || [];
-  const students = report.students || [];
-  const studentMeta = report.pagination?.students || { total: students.length };
-  const attemptMeta = report.pagination?.recentAttempts || { total: students.reduce((sum, student) => sum + Number(student.attemptCount || 0), 0) };
-  return `
-    <div class="class-report-card">
-      <div class="class-detail-summary">
-        <div class="meta"><span>${escapeHtml(klass.categoryName || categoryName(klass.category))}${klass.level ? ` · ${klass.level} 级` : ""}</span><span>邀请码 ${escapeHtml(klass.inviteCode || "")}</span><a href="#/classes/${encodeURIComponent(klass.id)}">查看学生端作业页</a></div>
-        <div class="stat-grid compact-stats">
-          ${statCard("学生", studentMeta.total)}
-          ${statCard("作业", assignments.length)}
-          ${statCard("答题", attemptMeta.total)}
-        </div>
-      </div>
-      <div class="class-report-grid">
-        ${renderClassStudentAdder(klass)}
-        <section>
-          <h3 class="subhead">学生练习数据</h3>
-          <table class="report-table">
-            <thead><tr><th>学生</th><th>练习</th><th>客观题最好成绩</th><th>编程通过</th></tr></thead>
-            <tbody>
-              ${students.map((student) => `<tr><td>${escapeHtml(student.username)}</td><td>${student.attemptCount} 次</td><td>${student.bestObjective ? `${renderScoreBadge(student.bestObjective.score, student.bestObjective.fullScore, "最好")}<div class="muted">${escapeHtml(student.bestObjective.paperTitle || "")}</div>` : `<span class="muted">暂无</span>`}</td><td>${student.acceptedPrograms} 题</td></tr>`).join("") || `<tr><td colspan="4" class="muted">暂无学生</td></tr>`}
-            </tbody>
-          </table>
-          ${renderPager(report.pagination?.students, "report-students")}
-        </section>
-      </div>
-    </div>
-  `;
 }
 
 function renderClassStudentAdder(klass) {
@@ -2365,7 +2437,10 @@ async function restoreBackup(name) {
 async function loadClassReport(classId, options = {}) {
   try {
     state.manage.tab = "classes";
-    if (options.reset) state.manage.classReportPages = { studentsPage: 1, attemptsPage: 1 };
+    if (options.reset) {
+      state.manage.classReportPages = { studentsPage: 1, attemptsPage: 1 };
+      state.manage.classDetailTab = "students";
+    }
     const pages = state.manage.classReportPages || { studentsPage: 1, attemptsPage: 1 };
     const params = new URLSearchParams({
       studentsPage: String(pages.studentsPage || 1),

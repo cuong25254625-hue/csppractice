@@ -617,6 +617,65 @@ button:disabled {
   background: #f0fdfa;
 }
 
+.class-detail-tabs {
+  display: flex;
+  gap: 0;
+  margin-top: 18px;
+  border-bottom: 2px solid var(--line);
+}
+
+.class-detail-tab-btn {
+  padding: 10px 24px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.95em;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.class-detail-tab-btn.active {
+  color: #0f766e;
+  border-bottom-color: #0f766e;
+}
+
+.class-detail-tab-btn:hover:not(.active) {
+  color: var(--text);
+}
+
+.import-progress-bar {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: #f0fdfa;
+  border: 1px solid #99f6e4;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+
+.import-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 0%;
+  background: #14b8a6;
+  opacity: 0.25;
+  transition: width 8s cubic-bezier(0.1, 0.8, 0.3, 1);
+  border-radius: 8px;
+}
+
+.import-progress-text {
+  position: relative;
+  z-index: 1;
+  color: #0f766e;
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
 .manage-class-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
@@ -625,10 +684,7 @@ button:disabled {
 }
 
 .manage-class-detail {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
-  gap: 18px;
-  align-items: start;
+  display: block;
 }
 
 .class-manage-toolbar {
@@ -2226,7 +2282,6 @@ mjx-container.mjx-explorer-active > mjx-help {
   .program-grid,
   .guide-layout,
   .manage-class-layout,
-  .manage-class-detail,
   .settings-top-grid,
   .user-admin-grid,
   .user-admin-list,

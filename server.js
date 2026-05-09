@@ -98,6 +98,17 @@ function getRuntimeStore() {
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_attempts_paper_created ON attempts (paperId, createdAt DESC)").run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_attempts_class_created ON attempts (classId, createdAt DESC)").run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_attempts_user_paper_created ON attempts (userId, paperId, createdAt DESC)").run();
+  runtimeStore.prepare(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      sid TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      lastSeenAt TEXT NOT NULL,
+      expiresAt TEXT NOT NULL
+    )
+  `).run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (userId)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expiresAt)").run();
   return runtimeStore;
 }
 
@@ -106,12 +117,16 @@ function loadRuntimeState() {
   if (state) {
     const normalized = normalizeDb(state);
     migrateAttemptsFromState(normalized.attempts);
+    migrateSessionsFromState(normalized.sessions);
     normalized.attempts = [];
+    normalized.sessions = loadSessions();
     return normalized;
   }
   const imported = normalizeDb(readJson(DB_FILE, {}));
   migrateAttemptsFromState(imported.attempts);
+  migrateSessionsFromState(imported.sessions);
   imported.attempts = [];
+  imported.sessions = loadSessions();
   saveDb(imported);
   return imported;
 }
@@ -141,7 +156,7 @@ function saveStateValue(key, value) {
 }
 
 function runtimeStateForStorage(db) {
-  return { ...normalizeDb(db), attempts: [] };
+  return { ...normalizeDb(db), attempts: [], sessions: {} };
 }
 
 function saveRuntimeState(db) {
@@ -180,12 +195,14 @@ function isExpired(isoTime) {
 function createSession(db, user) {
   const sid = crypto.randomBytes(32).toString("hex");
   const now = new Date();
-  db.sessions[sid] = {
+  const session = {
     userId: user.id,
     createdAt: now.toISOString(),
     lastSeenAt: now.toISOString(),
     expiresAt: sessionExpiresAt(now)
   };
+  db.sessions[sid] = session;
+  saveSession(sid, session);
   return sid;
 }
 
@@ -342,6 +359,70 @@ function loadPapers() {
 
 function savePapers(papers) {
   savePaperState(papers);
+}
+
+function sessionFromRow(row) {
+  return {
+    userId: row.userId,
+    createdAt: row.createdAt,
+    lastSeenAt: row.lastSeenAt,
+    expiresAt: row.expiresAt
+  };
+}
+
+function loadSessions() {
+  const now = new Date().toISOString();
+  const store = getRuntimeStore();
+  store.prepare("DELETE FROM sessions WHERE expiresAt <= ?").run(now);
+  return Object.fromEntries(store.prepare("SELECT * FROM sessions").all().map((row) => [row.sid, sessionFromRow(row)]));
+}
+
+function getSession(sid) {
+  if (!sid) return null;
+  const row = getRuntimeStore().prepare("SELECT * FROM sessions WHERE sid = ?").get(sid);
+  return row ? sessionFromRow(row) : null;
+}
+
+function saveSession(sid, session) {
+  getRuntimeStore().prepare(`
+    INSERT INTO sessions (sid, userId, createdAt, lastSeenAt, expiresAt)
+    VALUES (@sid, @userId, @createdAt, @lastSeenAt, @expiresAt)
+    ON CONFLICT(sid) DO UPDATE SET
+      userId = excluded.userId,
+      createdAt = excluded.createdAt,
+      lastSeenAt = excluded.lastSeenAt,
+      expiresAt = excluded.expiresAt
+  `).run({ sid, ...session });
+}
+
+function deleteSession(sid) {
+  if (!sid) return;
+  getRuntimeStore().prepare("DELETE FROM sessions WHERE sid = ?").run(sid);
+}
+
+function migrateSessionsFromState(sessions) {
+  if (!sessions || typeof sessions !== "object") return;
+  Object.entries(sessions).forEach(([sid, session]) => {
+    if (!sid || !session?.userId || isExpired(session.expiresAt)) return;
+    saveSession(sid, {
+      userId: session.userId,
+      createdAt: session.createdAt || new Date().toISOString(),
+      lastSeenAt: session.lastSeenAt || session.createdAt || new Date().toISOString(),
+      expiresAt: session.expiresAt || sessionExpiresAt(new Date(session.createdAt || Date.now()))
+    });
+  });
+}
+
+function replaceSessions(sessions) {
+  const store = getRuntimeStore();
+  const transaction = store.transaction((items) => {
+    store.prepare("DELETE FROM sessions").run();
+    Object.entries(items || {}).forEach(([sid, session]) => {
+      if (!sid || !session?.userId || isExpired(session.expiresAt)) return;
+      saveSession(sid, session);
+    });
+  });
+  transaction(sessions || {});
 }
 
 function attemptFromRow(row) {
@@ -574,6 +655,18 @@ function readBackupAttempts(sqliteFile) {
   }
 }
 
+function readBackupSessions(sqliteFile) {
+  if (!fs.existsSync(sqliteFile)) return null;
+  const backupDb = new Database(sqliteFile, { readonly: true });
+  try {
+    const table = backupDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sessions'").get();
+    if (!table) return null;
+    return Object.fromEntries(backupDb.prepare("SELECT * FROM sessions").all().map((row) => [row.sid, sessionFromRow(row)]));
+  } finally {
+    backupDb.close();
+  }
+}
+
 function readBackupPayload(name) {
   const targetDir = backupDirByName(name);
   const sqliteFile = path.join(targetDir, "runtime.sqlite");
@@ -583,7 +676,8 @@ function readBackupPayload(name) {
   if (!Array.isArray(paperState)) throw new Error("备份缺少试卷数据。");
   const normalizedDb = normalizeDb(dbState);
   const attempts = readBackupAttempts(sqliteFile) || normalizedDb.attempts || [];
-  return { db: normalizedDb, papers: paperState, attempts };
+  const sessions = readBackupSessions(sqliteFile) || normalizedDb.sessions || {};
+  return { db: normalizedDb, papers: paperState, attempts, sessions };
 }
 
 async function createDataBackup(reason = "scheduled") {
@@ -610,7 +704,8 @@ async function createDataBackup(reason = "scheduled") {
     reason,
     files: fs.readdirSync(targetDir),
     papers: papers.length,
-    attempts: loadAttempts().length
+    attempts: loadAttempts().length,
+    sessions: Object.keys(loadSessions()).length
   });
   pruneBackups();
   return targetDir;
@@ -658,10 +753,10 @@ function parseCookies(header = "") {
 
 function currentUser(req, db) {
   const cookies = parseCookies(req.headers.cookie);
-  const session = cookies.sid && db.sessions[cookies.sid];
+  const session = getSession(cookies.sid);
   if (!session) return null;
   if (isExpired(session.expiresAt)) {
-    delete db.sessions[cookies.sid];
+    deleteSession(cookies.sid);
     return null;
   }
   const user = db.users.find((item) => item.id === session.userId);
@@ -1654,8 +1749,10 @@ async function api(req, res) {
 
   if (req.method === "POST" && url.pathname === "/api/logout") {
     const cookies = parseCookies(req.headers.cookie);
-    if (cookies.sid) delete db.sessions[cookies.sid];
-    saveDb(db);
+    if (cookies.sid) {
+      delete db.sessions[cookies.sid];
+      deleteSession(cookies.sid);
+    }
     return sendJson(res, 200, { ok: true }, {
       "Set-Cookie": clearSessionCookie(req)
     });
@@ -1834,6 +1931,7 @@ async function api(req, res) {
     try {
       const safetyDir = await createDataBackup("pre-restore");
       const restoredDb = normalizeDb(payload.db);
+      restoredDb.sessions = payload.sessions || {};
       const cookies = parseCookies(req.headers.cookie);
       const restoredUser = restoredDb.users.find((item) => item.id === user.id) || restoredDb.users.find((item) => item.username === user.username && item.role === "admin");
       if (cookies.sid && restoredUser) {
@@ -1850,6 +1948,7 @@ async function api(req, res) {
       writeJson(DB_FILE, restoredDb);
       savePapers(payload.papers);
       replaceAttempts(payload.attempts);
+      replaceSessions(restoredDb.sessions);
       return sendJson(res, 200, {
         restored: {
           name,

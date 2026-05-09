@@ -646,6 +646,7 @@ function normalizeQuestion(question, fallbackId) {
 function updatePaperVisibility(req, res, db, papers, user, id, hidden) {
   const paper = papers.find((item) => item.id === id);
   if (!paper) return sendJson(res, 404, { message: "试卷不存在。" });
+  if (!canManagePaper(user, paper)) return sendJson(res, 403, { message: "只能管理自己创建的试卷。" });
   db.paperVisibility ||= {};
   db.paperVisibility[id] = Boolean(hidden);
   audit(db, user, db.paperVisibility[id] ? "paper:hide" : "paper:show", id);
@@ -659,6 +660,8 @@ function updatePapersVisibility(req, res, db, papers, user, ids, hidden) {
   const paperMap = new Map(papers.map((paper) => [paper.id, paper]));
   const missing = uniqueIds.filter((id) => !paperMap.has(id));
   if (missing.length) return sendJson(res, 404, { message: `试卷不存在：${missing.join("、")}` });
+  const forbidden = uniqueIds.filter((id) => !canManagePaper(user, paperMap.get(id)));
+  if (forbidden.length) return sendJson(res, 403, { message: "只能管理自己创建的试卷。" });
   db.paperVisibility ||= {};
   uniqueIds.forEach((id) => {
     db.paperVisibility[id] = Boolean(hidden);
@@ -897,6 +900,21 @@ function isPaperHidden(db, paper) {
 
 function paperWithVisibility(db, paper) {
   return { ...paper, hidden: isPaperHidden(db, paper) };
+}
+
+function paperOwnerId(paper) {
+  return String(paper?.createdBy || paper?.updatedBy || "");
+}
+
+function canManagePaper(user, paper) {
+  if (!user || !paper) return false;
+  if (isAdmin(user)) return true;
+  return paperOwnerId(paper) === user.id;
+}
+
+function manageablePapers(user, papers) {
+  if (isAdmin(user)) return papers;
+  return papers.filter((paper) => canManagePaper(user, paper));
 }
 
 function slugify(value) {
@@ -1229,7 +1247,7 @@ async function api(req, res) {
     const studentAttempts = db.attempts.filter((attempt) => studentIds.has(attempt.userId));
     return sendJson(res, 200, {
       totals: {
-        papers: papers.length,
+        papers: manageablePapers(user, papers).length,
         classes: teacherClasses.length,
         students: studentIds.size,
         attempts: studentAttempts.length
@@ -1256,7 +1274,7 @@ async function api(req, res) {
   if (req.method === "GET" && url.pathname === "/api/admin/papers") {
     const user = requireTeacher(req, res, db);
     if (!user) return;
-    return sendJson(res, 200, { papers: papers.map((paper) => paperWithVisibility(db, paper)) });
+    return sendJson(res, 200, { papers: manageablePapers(user, papers).map((paper) => paperWithVisibility(db, paper)) });
   }
 
   if (req.method === "POST" && url.pathname === "/api/admin/papers/export-word") {
@@ -1264,7 +1282,12 @@ async function api(req, res) {
     if (!user) return;
     const body = await readBody(req);
     const ids = Array.isArray(body.ids) ? body.ids.map((id) => String(id || "")) : [];
-    const selected = ids.length ? papers.filter((paper) => ids.includes(paper.id)) : papers;
+    const paperMap = new Map(papers.map((paper) => [paper.id, paper]));
+    const selected = ids.length ? ids.map((id) => paperMap.get(id)).filter(Boolean) : manageablePapers(user, papers);
+    const missing = ids.filter((id) => !paperMap.has(id));
+    if (missing.length) return sendJson(res, 404, { message: `试卷不存在：${missing.join("、")}` });
+    const forbidden = selected.filter((paper) => !canManagePaper(user, paper));
+    if (forbidden.length) return sendJson(res, 403, { message: "只能导出自己创建的试卷。" });
     if (!selected.length) return sendJson(res, 400, { message: "请先选择要导出的试卷。" });
     const buffer = await buildPapersDocxBuffer(selected);
     const filename = encodeURIComponent(`试卷导出-${new Date().toISOString().slice(0, 10)}.docx`);
@@ -1291,6 +1314,10 @@ async function api(req, res) {
     const now = new Date().toISOString();
     let created = 0;
     let updated = 0;
+    const forbidden = imported
+      .map((paper) => papers.find((item) => item.id === paper.id))
+      .filter((paper) => paper && !canManagePaper(user, paper));
+    if (forbidden.length) return sendJson(res, 403, { message: `只能更新自己创建的试卷：${forbidden.map((paper) => paper.title || paper.id).join("、")}` });
     imported.forEach((paper) => {
       const index = papers.findIndex((item) => item.id === paper.id);
       if (index >= 0) {
@@ -1316,6 +1343,7 @@ async function api(req, res) {
     const index = papers.findIndex((item) => item.id === paper.id);
     const now = new Date().toISOString();
     if (index >= 0) {
+      if (!canManagePaper(user, papers[index])) return sendJson(res, 403, { message: "只能编辑自己创建的试卷。" });
       papers[index] = { ...papers[index], ...paper, updatedBy: user.id, updatedAt: now };
       audit(db, user, "paper:update", paper.id);
     } else {
@@ -1393,6 +1421,7 @@ async function api(req, res) {
     const id = decodeURIComponent(paperDelete[1]);
     const index = papers.findIndex((paper) => paper.id === id);
     if (index < 0) return sendJson(res, 404, { message: "试卷不存在。" });
+    if (!canManagePaper(user, papers[index])) return sendJson(res, 403, { message: "只能删除自己创建的试卷。" });
     papers.splice(index, 1);
     audit(db, user, "paper:delete", id);
     savePapers(papers);
@@ -1512,6 +1541,7 @@ async function api(req, res) {
     const body = await readBody(req);
     const paper = papers.find((item) => item.id === body.paperId);
     if (!paper) return sendJson(res, 404, { message: "试卷不存在。" });
+    if (!canManagePaper(user, paper)) return sendJson(res, 403, { message: "只能发布自己创建的试卷。" });
     const assignment = {
       id: crypto.randomUUID(),
       classId,

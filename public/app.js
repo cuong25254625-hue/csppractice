@@ -914,8 +914,8 @@ async function renderManage() {
   }));
   document.querySelector("#backPaperList")?.addEventListener("click", showPaperList);
   document.querySelector("#newPaper")?.addEventListener("click", createNewPaper);
-  document.querySelector("#savePaper")?.addEventListener("click", savePaperFromEditor);
-  document.querySelector("#syncJson")?.addEventListener("click", syncBuilderToJson);
+  document.querySelectorAll("[data-paper-editor-action='save']").forEach((button) => button.addEventListener("click", savePaperFromEditor));
+  document.querySelectorAll("[data-paper-editor-action='sync-json']").forEach((button) => button.addEventListener("click", syncBuilderToJson));
   document.querySelector("#paperCategoryInput")?.addEventListener("change", () => {
     const examType = examTypeById(document.querySelector("#paperCategoryInput").value);
     document.querySelector("#paperLevelField").hidden = !examType.levelEnabled;
@@ -1241,10 +1241,23 @@ function renderPaperEditorSection() {
         <button class="secondary-btn" type="button" id="backPaperList">返回管理试卷</button>
       </div>
       <div class="panel-body">
+        ${canEdit ? renderPaperEditorActions("top") : ""}
         ${canEdit ? renderPaperBuilder(editingPaper) : `<fieldset class="readonly-paper" disabled>${renderPaperBuilder(editingPaper)}</fieldset>`}
         ${canEdit ? `<details class="advanced-json"><summary>高级 JSON 导入/导出</summary><textarea class="json-editor compact" id="paperJson" spellcheck="false">${escapeHtml(JSON.stringify(state.manage.editPaper || samplePaper(), null, 2))}</textarea></details>
-        <div class="submit-row"><button class="primary-btn" type="button" id="savePaper">保存试卷</button><button class="secondary-btn" type="button" id="syncJson">同步到 JSON</button><span class="muted">日常用表单建卷；复杂导入可展开 JSON。</span></div>` : `<div class="submit-row"><span class="muted">这套试卷由其他账号创建，只能查看和发布，不能修改。</span></div>`}
+        ${renderPaperEditorActions("bottom")}` : `<div class="submit-row"><span class="muted">这套试卷由其他账号创建，只能查看和发布，不能修改。</span></div>`}
       </div>
+    </div>
+  `;
+}
+
+function renderPaperEditorActions(position) {
+  return `
+    <div class="paper-editor-actions ${position === "top" ? "paper-editor-actions-top" : ""}">
+      <div>
+        <button class="primary-btn" type="button" data-paper-editor-action="save">保存试卷</button>
+        <button class="secondary-btn" type="button" data-paper-editor-action="sync-json">同步到 JSON</button>
+      </div>
+      <span class="muted">日常用表单建卷；复杂导入可展开 JSON。</span>
     </div>
   `;
 }

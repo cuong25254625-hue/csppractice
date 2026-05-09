@@ -8,7 +8,8 @@ const state = {
   filters: { category: "all", level: "all", keyword: "" },
   programSubmissionEnabled: false,
   allowRegistration: true,
-  manage: { papers: [], overview: null, users: [], students: [], backups: [], editPaper: null, classReport: null, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" } }
+  study: { completedPage: 1, wrongPage: 1 },
+  manage: { papers: [], overview: null, users: [], students: [], backups: [], editPaper: null, classReport: null, classReportPages: { studentsPage: 1, attemptsPage: 1 }, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" } }
 };
 
 const app = document.querySelector("#app");
@@ -714,12 +715,18 @@ async function renderStudy() {
     document.querySelector("[data-open-auth]")?.addEventListener("click", openAuth);
     return;
   }
-  let summary = { totals: { attempts: 0, assignments: 0, pendingAssignments: 0, wrongQuestions: 0 }, assignments: [], wrongQuestions: [], progress: [] };
+  let summary = { totals: { attempts: 0, assignments: 0, pendingAssignments: 0, wrongQuestions: 0 }, assignments: [], pendingAssignments: [], completedAssignments: [], wrongQuestions: [], progress: [], pagination: {} };
   try {
-    summary = await api("/api/student/summary");
+    const params = new URLSearchParams({
+      completedPage: String(state.study.completedPage || 1),
+      wrongPage: String(state.study.wrongPage || 1)
+    });
+    summary = await api(`/api/student/summary?${params.toString()}`);
   } catch (error) {
     notify(error.message);
   }
+  const pendingAssignments = summary.pendingAssignments || summary.assignments.filter((item) => !item.done);
+  const completedAssignments = summary.completedAssignments || summary.assignments.filter((item) => item.done);
   app.innerHTML = `
     <div class="grid">
       <section>
@@ -735,12 +742,12 @@ async function renderStudy() {
         <div class="panel" style="margin-top: 18px;">
           <div class="panel-head"><h2>待完成作业</h2></div>
           <ul class="paper-list">
-            ${summary.assignments.filter((item) => !item.done).map((item) => `<li class="paper-item"><span class="paper-icon">作业</span><div><h3><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a></h3><div class="meta"><span>${escapeHtml(item.className)}</span><span>${assignmentStatusText(item)}</span><span>${assignmentTimeText(item)}</span><span>${item.bestObjective ? renderScoreBadge(item.bestObjective.score, item.bestObjective.fullScore, "客观题") : "客观题未提交"}</span><span>编程题 ${item.acceptedPrograms}/${item.programTotal}</span></div></div><a class="${item.status === "open" ? "primary-btn" : "secondary-btn"}" href="#/paper/${item.paperId}">${item.status === "not_started" ? "预览" : "去完成"}</a></li>`).join("") || `<li class="empty">暂无待完成作业</li>`}
+            ${pendingAssignments.map((item) => `<li class="paper-item"><span class="paper-icon">作业</span><div><h3><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a></h3><div class="meta"><span>${escapeHtml(item.className)}</span><span>${assignmentStatusText(item)}</span><span>${assignmentTimeText(item)}</span><span>${item.bestObjective ? renderScoreBadge(item.bestObjective.score, item.bestObjective.fullScore, "客观题") : "客观题未提交"}</span><span>编程题 ${item.acceptedPrograms}/${item.programTotal}</span></div></div><a class="${item.status === "open" ? "primary-btn" : "secondary-btn"}" href="#/paper/${item.paperId}">${item.status === "not_started" ? "预览" : "去完成"}</a></li>`).join("") || `<li class="empty">暂无待完成作业</li>`}
           </ul>
         </div>
         <div class="panel" style="margin-top: 18px;">
-          <div class="panel-head"><h2>错题本</h2><span class="muted">${summary.wrongQuestions.length} 题</span></div>
-          <div class="panel-body wrong-list">${renderWrongBook(summary.wrongQuestions)}</div>
+          <div class="panel-head"><h2>错题本</h2><span class="muted">${summary.pagination?.wrongQuestions?.total ?? summary.wrongQuestions.length} 题</span></div>
+          <div class="panel-body wrong-list">${renderWrongBook(summary.wrongQuestions)}${renderPager(summary.pagination?.wrongQuestions, "study-wrong")}</div>
         </div>
       </section>
       <aside class="side-stack">
@@ -755,11 +762,17 @@ async function renderStudy() {
         </div>
         <div class="panel">
           <div class="panel-head"><h2>已完成作业</h2></div>
-          <div class="panel-body"><ul class="mini-list">${summary.assignments.filter((item) => item.done).slice(0, 8).map((item) => `<li><span><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a><div class="muted">${escapeHtml(item.className)} · 得分 ${assignmentScoreText(item)}</div></span><a class="secondary-btn" href="#/paper/${item.paperId}">再次做题</a></li>`).join("") || `<li class="muted">暂无</li>`}</ul></div>
+          <div class="panel-body"><ul class="mini-list">${completedAssignments.map((item) => `<li><span><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a><div class="muted">${escapeHtml(item.className)} · 得分 ${assignmentScoreText(item)}</div></span><a class="secondary-btn" href="#/paper/${item.paperId}">再次做题</a></li>`).join("") || `<li class="muted">暂无</li>`}</ul>${renderPager(summary.pagination?.completedAssignments, "study-completed")}</div>
         </div>
       </aside>
     </div>
   `;
+  document.querySelectorAll("[data-page-target^='study-']").forEach((button) => button.addEventListener("click", () => {
+    const page = Math.max(1, Number(button.dataset.page || 1));
+    if (button.dataset.pageTarget === "study-completed") state.study.completedPage = page;
+    if (button.dataset.pageTarget === "study-wrong") state.study.wrongPage = page;
+    renderStudy();
+  }));
   typesetMath(app);
 }
 
@@ -819,6 +832,19 @@ function renderAttemptRow(attempt) {
 function renderProgramStatus(attempt) {
   const accepted = attempt.status === "accepted";
   return `<span class="program-status ${accepted ? "accepted" : "failed"}">${accepted ? "通过" : attempt.status} ${attempt.passed}/${attempt.total}</span>`;
+}
+
+function renderPager(meta, target) {
+  if (!meta || Number(meta.totalPages || 1) <= 1) return "";
+  const page = Number(meta.page || 1);
+  const totalPages = Number(meta.totalPages || 1);
+  return `
+    <div class="pager-row">
+      <button class="secondary-btn" type="button" data-page-target="${target}" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>上一页</button>
+      <span class="muted">第 ${page}/${totalPages} 页 · 共 ${Number(meta.total || 0)} 条</span>
+      <button class="secondary-btn" type="button" data-page-target="${target}" data-page="${page + 1}" ${page >= totalPages ? "disabled" : ""}>下一页</button>
+    </div>
+  `;
 }
 
 async function renderClasses() {
@@ -960,7 +986,14 @@ async function renderManage() {
   document.querySelector("#createClass")?.addEventListener("click", createClass);
   document.querySelector("#classCategory")?.addEventListener("change", updateClassLevelVisibility);
   updateClassLevelVisibility();
-  document.querySelectorAll("[data-class-report]").forEach((button) => button.addEventListener("click", () => loadClassReport(button.dataset.classReport)));
+  document.querySelectorAll("[data-class-report]").forEach((button) => button.addEventListener("click", () => loadClassReport(button.dataset.classReport, { reset: true })));
+  document.querySelectorAll("[data-page-target^='report-']").forEach((button) => button.addEventListener("click", () => {
+    const page = Math.max(1, Number(button.dataset.page || 1));
+    if (button.dataset.pageTarget === "report-students") state.manage.classReportPages.studentsPage = page;
+    if (button.dataset.pageTarget === "report-attempts") state.manage.classReportPages.attemptsPage = page;
+    const classId = state.manage.classReport?.class?.id;
+    if (classId) loadClassReport(classId);
+  }));
   document.querySelector("#createAssignment")?.addEventListener("click", createAssignment);
   document.querySelector("#addSelectedStudents")?.addEventListener("click", () => addStudentsToActiveClass(false));
   document.querySelector("#addAllStudents")?.addEventListener("click", () => addStudentsToActiveClass(true));
@@ -1982,7 +2015,8 @@ function renderClassReport() {
   const assignments = report.assignments || [];
   const students = report.students || [];
   const attempts = report.recentAttempts || [];
-  const totalAttempts = students.reduce((sum, student) => sum + Number(student.attemptCount || 0), 0);
+  const studentMeta = report.pagination?.students || { total: students.length };
+  const attemptMeta = report.pagination?.recentAttempts || { total: students.reduce((sum, student) => sum + Number(student.attemptCount || 0), 0) };
   return `
     <div class="panel class-report-card">
       <div class="panel-head">
@@ -1991,9 +2025,9 @@ function renderClassReport() {
       </div>
       <div class="panel-body">
         <div class="stat-grid compact-stats">
-          ${statCard("学生", students.length)}
+          ${statCard("学生", studentMeta.total)}
           ${statCard("作业", assignments.length)}
-          ${statCard("答题", totalAttempts)}
+          ${statCard("答题", attemptMeta.total)}
         </div>
         ${renderClassStudentAdder(klass)}
         <h3 class="subhead">学生练习数据</h3>
@@ -2003,10 +2037,12 @@ function renderClassReport() {
             ${students.map((student) => `<tr><td>${escapeHtml(student.username)}</td><td>${student.attemptCount} 次</td><td>${student.bestObjective ? `${renderScoreBadge(student.bestObjective.score, student.bestObjective.fullScore, "最好")}<div class="muted">${escapeHtml(student.bestObjective.paperTitle || "")}</div>` : `<span class="muted">暂无</span>`}</td><td>${student.acceptedPrograms} 题</td></tr>`).join("") || `<tr><td colspan="4" class="muted">暂无学生</td></tr>`}
           </tbody>
         </table>
+        ${renderPager(report.pagination?.students, "report-students")}
         <h3 class="subhead">已发布作业</h3>
         <ul class="mini-list">${assignments.map((item) => `<li><span>${escapeHtml(item.paperTitle || item.title)}<div class="muted">${assignmentTimeText(item)}</div></span></li>`).join("") || `<li class="muted">暂无作业</li>`}</ul>
         <h3 class="subhead">最近答题</h3>
-        <ul class="mini-list">${attempts.slice(0, 6).map((item) => `<li><span>${escapeHtml(item.username || "")}<div class="muted">${escapeHtml(item.paperTitle || item.questionTitle || "")}</div></span><span class="muted">${item.type === "objective" ? `${item.score}/${item.fullScore}` : `${item.passed || 0}/${item.total || 0}`}</span></li>`).join("") || `<li class="muted">暂无答题记录</li>`}</ul>
+        <ul class="mini-list">${attempts.map((item) => `<li><span>${escapeHtml(item.username || "")}<div class="muted">${escapeHtml(item.paperTitle || item.questionTitle || "")}</div></span><span class="muted">${item.type === "objective" ? `${item.score}/${item.fullScore}` : `${item.passed || 0}/${item.total || 0}`}</span></li>`).join("") || `<li class="muted">暂无答题记录</li>`}</ul>
+        ${renderPager(report.pagination?.recentAttempts, "report-attempts")}
       </div>
     </div>
   `;
@@ -2144,11 +2180,17 @@ async function restoreBackup(name) {
   }
 }
 
-async function loadClassReport(classId) {
+async function loadClassReport(classId, options = {}) {
   try {
     state.manage.tab = "classes";
-    state.manage.classReport = await api(`/api/classes/${encodeURIComponent(classId)}/report`);
-    notify("班级学情已加载。");
+    if (options.reset) state.manage.classReportPages = { studentsPage: 1, attemptsPage: 1 };
+    const pages = state.manage.classReportPages || { studentsPage: 1, attemptsPage: 1 };
+    const params = new URLSearchParams({
+      studentsPage: String(pages.studentsPage || 1),
+      attemptsPage: String(pages.attemptsPage || 1)
+    });
+    state.manage.classReport = await api(`/api/classes/${encodeURIComponent(classId)}/report?${params.toString()}`);
+    if (!options.silent) notify("班级学情已加载。");
     renderManage();
   } catch (error) {
     notify(error.message);
@@ -2213,11 +2255,12 @@ async function createAssignment() {
         endAt: document.querySelector("#assignmentEnd").value
       }
     });
-    if (state.manage.classReport?.class?.id === classId) {
-      state.manage.classReport = await api(`/api/classes/${encodeURIComponent(classId)}/report`);
-    }
     notify("作业已发布。");
-    renderManage();
+    if (state.manage.classReport?.class?.id === classId) {
+      await loadClassReport(classId, { silent: true });
+    } else {
+      renderManage();
+    }
   } catch (error) {
     notify(error.message);
   }
@@ -2234,8 +2277,7 @@ async function addStudentsToActiveClass(all) {
   try {
     const data = await api(`/api/classes/${encodeURIComponent(classId)}/students`, { method: "POST", body: { studentIds: selectedIds } });
     notify(`已添加 ${data.added} 名学生。`);
-    state.manage.classReport = await api(`/api/classes/${encodeURIComponent(classId)}/report`);
-    renderManage();
+    await loadClassReport(classId, { silent: true });
   } catch (error) {
     notify(error.message);
   }

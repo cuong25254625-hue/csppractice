@@ -1605,6 +1605,20 @@ button:disabled {
   margin-top: 16px;
 }
 
+.pager-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.pager-row .secondary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .readonly-paper {
   border: 0;
   padding: 0;

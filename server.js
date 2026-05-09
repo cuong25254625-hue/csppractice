@@ -109,6 +109,79 @@ function getRuntimeStore() {
   `).run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (userId)").run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expiresAt)").run();
+  runtimeStore.prepare(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      role TEXT NOT NULL,
+      status TEXT NOT NULL,
+      teacherId TEXT,
+      createdAt TEXT NOT NULL,
+      sortOrder INTEGER NOT NULL,
+      payloadJson TEXT NOT NULL
+    )
+  `).run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_users_username ON users (username)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_users_role_teacher ON users (role, teacherId)").run();
+  runtimeStore.prepare(`
+    CREATE TABLE IF NOT EXISTS classes (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      teacherId TEXT NOT NULL,
+      category TEXT,
+      level INTEGER,
+      inviteCode TEXT,
+      createdAt TEXT NOT NULL,
+      sortOrder INTEGER NOT NULL,
+      payloadJson TEXT NOT NULL
+    )
+  `).run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_classes_teacher ON classes (teacherId)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_classes_invite ON classes (inviteCode)").run();
+  runtimeStore.prepare(`
+    CREATE TABLE IF NOT EXISTS enrollments (
+      id TEXT PRIMARY KEY,
+      classId TEXT NOT NULL,
+      userId TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      addedBy TEXT,
+      sortOrder INTEGER NOT NULL,
+      payloadJson TEXT NOT NULL
+    )
+  `).run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_enrollments_class ON enrollments (classId)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_enrollments_user ON enrollments (userId)").run();
+  runtimeStore.prepare(`
+    CREATE TABLE IF NOT EXISTS assignments (
+      id TEXT PRIMARY KEY,
+      classId TEXT NOT NULL,
+      paperId TEXT NOT NULL,
+      title TEXT,
+      startAt TEXT,
+      endAt TEXT,
+      dueAt TEXT,
+      createdBy TEXT,
+      createdAt TEXT NOT NULL,
+      sortOrder INTEGER NOT NULL,
+      payloadJson TEXT NOT NULL
+    )
+  `).run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_assignments_class ON assignments (classId, createdAt DESC)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_assignments_paper ON assignments (paperId)").run();
+  runtimeStore.prepare(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      username TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target TEXT,
+      createdAt TEXT NOT NULL,
+      sortOrder INTEGER NOT NULL,
+      payloadJson TEXT NOT NULL
+    )
+  `).run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs (userId, createdAt DESC)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs (createdAt DESC)").run();
   return runtimeStore;
 }
 
@@ -118,6 +191,12 @@ function loadRuntimeState() {
     const normalized = normalizeDb(state);
     migrateAttemptsFromState(normalized.attempts);
     migrateSessionsFromState(normalized.sessions);
+    const coreState = loadCoreTables();
+    if (coreState) {
+      Object.assign(normalized, coreState);
+    } else {
+      replaceCoreTables(normalized);
+    }
     normalized.attempts = [];
     normalized.sessions = loadSessions();
     return normalized;
@@ -125,6 +204,7 @@ function loadRuntimeState() {
   const imported = normalizeDb(readJson(DB_FILE, {}));
   migrateAttemptsFromState(imported.attempts);
   migrateSessionsFromState(imported.sessions);
+  replaceCoreTables(imported);
   imported.attempts = [];
   imported.sessions = loadSessions();
   saveDb(imported);
@@ -156,11 +236,22 @@ function saveStateValue(key, value) {
 }
 
 function runtimeStateForStorage(db) {
-  return { ...normalizeDb(db), attempts: [], sessions: {} };
+  return {
+    ...normalizeDb(db),
+    users: [],
+    classes: [],
+    enrollments: [],
+    assignments: [],
+    auditLogs: [],
+    attempts: [],
+    sessions: {}
+  };
 }
 
 function saveRuntimeState(db) {
-  saveStateValue("db", runtimeStateForStorage(db));
+  const normalized = normalizeDb(db);
+  replaceCoreTables(normalized);
+  saveStateValue("db", runtimeStateForStorage(normalized));
 }
 
 function loadPaperState() {
@@ -425,6 +516,143 @@ function replaceSessions(sessions) {
   transaction(sessions || {});
 }
 
+function payloadFromRow(row) {
+  return JSON.parse(row.payloadJson || "{}");
+}
+
+function loadPayloadRows(tableName) {
+  return getRuntimeStore()
+    .prepare(`SELECT payloadJson FROM ${tableName} ORDER BY sortOrder ASC, datetime(createdAt) DESC`)
+    .all()
+    .map(payloadFromRow);
+}
+
+function loadCoreTables() {
+  const store = getRuntimeStore();
+  const userCount = store.prepare("SELECT COUNT(*) AS count FROM users").get().count || 0;
+  if (!userCount) return null;
+  return {
+    users: loadPayloadRows("users"),
+    classes: loadPayloadRows("classes"),
+    enrollments: loadPayloadRows("enrollments"),
+    assignments: loadPayloadRows("assignments"),
+    auditLogs: loadPayloadRows("audit_logs")
+  };
+}
+
+function replaceCoreTables(db) {
+  const store = getRuntimeStore();
+  const transaction = store.transaction((state) => {
+    store.prepare("DELETE FROM users").run();
+    store.prepare("DELETE FROM classes").run();
+    store.prepare("DELETE FROM enrollments").run();
+    store.prepare("DELETE FROM assignments").run();
+    store.prepare("DELETE FROM audit_logs").run();
+
+    const insertUser = store.prepare(`
+      INSERT INTO users (id, username, role, status, teacherId, createdAt, sortOrder, payloadJson)
+      VALUES (@id, @username, @role, @status, @teacherId, @createdAt, @sortOrder, @payloadJson)
+    `);
+    const insertClass = store.prepare(`
+      INSERT INTO classes (id, name, teacherId, category, level, inviteCode, createdAt, sortOrder, payloadJson)
+      VALUES (@id, @name, @teacherId, @category, @level, @inviteCode, @createdAt, @sortOrder, @payloadJson)
+    `);
+    const insertEnrollment = store.prepare(`
+      INSERT INTO enrollments (id, classId, userId, createdAt, addedBy, sortOrder, payloadJson)
+      VALUES (@id, @classId, @userId, @createdAt, @addedBy, @sortOrder, @payloadJson)
+    `);
+    const insertAssignment = store.prepare(`
+      INSERT INTO assignments (id, classId, paperId, title, startAt, endAt, dueAt, createdBy, createdAt, sortOrder, payloadJson)
+      VALUES (@id, @classId, @paperId, @title, @startAt, @endAt, @dueAt, @createdBy, @createdAt, @sortOrder, @payloadJson)
+    `);
+    const insertAuditLog = store.prepare(`
+      INSERT INTO audit_logs (id, userId, username, action, target, createdAt, sortOrder, payloadJson)
+      VALUES (@id, @userId, @username, @action, @target, @createdAt, @sortOrder, @payloadJson)
+    `);
+
+    (state.users || []).forEach((user, index) => {
+      if (!user?.id || !user.username) return;
+      insertUser.run({
+        id: user.id,
+        username: user.username,
+        role: user.role || "student",
+        status: user.status || "active",
+        teacherId: user.teacherId || null,
+        createdAt: user.createdAt || new Date().toISOString(),
+        sortOrder: index,
+        payloadJson: JSON.stringify(user)
+      });
+    });
+    (state.classes || []).forEach((klass, index) => {
+      if (!klass?.id || !klass.name || !klass.teacherId) return;
+      insertClass.run({
+        id: klass.id,
+        name: klass.name,
+        teacherId: klass.teacherId,
+        category: klass.category || "gesp",
+        level: klass.level ?? null,
+        inviteCode: klass.inviteCode || null,
+        createdAt: klass.createdAt || new Date().toISOString(),
+        sortOrder: index,
+        payloadJson: JSON.stringify(klass)
+      });
+    });
+    (state.enrollments || []).forEach((enrollment, index) => {
+      if (!enrollment?.id || !enrollment.classId || !enrollment.userId) return;
+      insertEnrollment.run({
+        id: enrollment.id,
+        classId: enrollment.classId,
+        userId: enrollment.userId,
+        createdAt: enrollment.createdAt || new Date().toISOString(),
+        addedBy: enrollment.addedBy || null,
+        sortOrder: index,
+        payloadJson: JSON.stringify(enrollment)
+      });
+    });
+    (state.assignments || []).forEach((assignment, index) => {
+      if (!assignment?.id || !assignment.classId || !assignment.paperId) return;
+      insertAssignment.run({
+        id: assignment.id,
+        classId: assignment.classId,
+        paperId: assignment.paperId,
+        title: assignment.title || null,
+        startAt: assignment.startAt || "",
+        endAt: assignment.endAt || "",
+        dueAt: assignment.dueAt || assignment.endAt || "",
+        createdBy: assignment.createdBy || null,
+        createdAt: assignment.createdAt || new Date().toISOString(),
+        sortOrder: index,
+        payloadJson: JSON.stringify(assignment)
+      });
+    });
+    (state.auditLogs || []).slice(0, MAX_AUDIT_LOGS).forEach((log, index) => {
+      if (!log?.id || !log.userId || !log.action) return;
+      insertAuditLog.run({
+        id: log.id,
+        userId: log.userId,
+        username: log.username || "",
+        action: log.action,
+        target: log.target || null,
+        createdAt: log.createdAt || new Date().toISOString(),
+        sortOrder: index,
+        payloadJson: JSON.stringify(log)
+      });
+    });
+  });
+  transaction(db);
+}
+
+function coreTableCounts() {
+  const store = getRuntimeStore();
+  return {
+    users: store.prepare("SELECT COUNT(*) AS count FROM users").get().count || 0,
+    classes: store.prepare("SELECT COUNT(*) AS count FROM classes").get().count || 0,
+    enrollments: store.prepare("SELECT COUNT(*) AS count FROM enrollments").get().count || 0,
+    assignments: store.prepare("SELECT COUNT(*) AS count FROM assignments").get().count || 0,
+    auditLogs: store.prepare("SELECT COUNT(*) AS count FROM audit_logs").get().count || 0
+  };
+}
+
 function attemptFromRow(row) {
   const payload = JSON.parse(row.payloadJson || "{}");
   return {
@@ -538,16 +766,17 @@ function attemptQuery(filters = {}) {
   };
 }
 
-function queryAttempts(filters = {}, limit = MAX_ATTEMPTS) {
+function queryAttempts(filters = {}, limit = MAX_ATTEMPTS, offset = 0) {
   const safeLimit = Number(limit || MAX_ATTEMPTS);
   if (safeLimit <= 0) return [];
+  const safeOffset = Math.max(0, Number(offset || 0));
   const { whereSql, params } = attemptQuery(filters);
   const rows = getRuntimeStore().prepare(`
     SELECT * FROM attempts
     ${whereSql}
     ORDER BY datetime(createdAt) DESC, rowid DESC
-    LIMIT ?
-  `).all(...params, safeLimit);
+    LIMIT ? OFFSET ?
+  `).all(...params, safeLimit, safeOffset);
   return rows.map(attemptFromRow);
 }
 
@@ -556,12 +785,22 @@ function countAttempts(filters = {}) {
   return getRuntimeStore().prepare(`SELECT COUNT(*) AS count FROM attempts ${whereSql}`).get(...params).count || 0;
 }
 
-function countAttemptsByUser() {
+function countAttemptsByUser(filters = {}) {
+  const { whereSql, params } = attemptQuery(filters);
   return new Map(getRuntimeStore().prepare(`
     SELECT userId, COUNT(*) AS count
     FROM attempts
+    ${whereSql}
     GROUP BY userId
-  `).all().map((row) => [row.userId, row.count]));
+  `).all(...params).map((row) => [row.userId, row.count]));
+}
+
+function practicedPaperIds(userId) {
+  return new Set(getRuntimeStore().prepare(`
+    SELECT DISTINCT paperId
+    FROM attempts
+    WHERE userId = ? AND paperId IS NOT NULL
+  `).all(userId).map((row) => row.paperId));
 }
 
 function migrateAttemptsFromState(attempts) {
@@ -667,6 +906,30 @@ function readBackupSessions(sqliteFile) {
   }
 }
 
+function readBackupCoreTables(sqliteFile) {
+  if (!fs.existsSync(sqliteFile)) return null;
+  const backupDb = new Database(sqliteFile, { readonly: true });
+  try {
+    const table = backupDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'users'").get();
+    if (!table) return null;
+    const userCount = backupDb.prepare("SELECT COUNT(*) AS count FROM users").get().count || 0;
+    if (!userCount) return null;
+    const loadRows = (tableName) => backupDb
+      .prepare(`SELECT payloadJson FROM ${tableName} ORDER BY sortOrder ASC, datetime(createdAt) DESC`)
+      .all()
+      .map(payloadFromRow);
+    return {
+      users: loadRows("users"),
+      classes: loadRows("classes"),
+      enrollments: loadRows("enrollments"),
+      assignments: loadRows("assignments"),
+      auditLogs: loadRows("audit_logs")
+    };
+  } finally {
+    backupDb.close();
+  }
+}
+
 function readBackupPayload(name) {
   const targetDir = backupDirByName(name);
   const sqliteFile = path.join(targetDir, "runtime.sqlite");
@@ -675,6 +938,8 @@ function readBackupPayload(name) {
   if (!dbState) throw new Error("备份缺少运行数据。");
   if (!Array.isArray(paperState)) throw new Error("备份缺少试卷数据。");
   const normalizedDb = normalizeDb(dbState);
+  const coreState = readBackupCoreTables(sqliteFile);
+  if (coreState) Object.assign(normalizedDb, coreState);
   const attempts = readBackupAttempts(sqliteFile) || normalizedDb.attempts || [];
   const sessions = readBackupSessions(sqliteFile) || normalizedDb.sessions || {};
   return { db: normalizedDb, papers: paperState, attempts, sessions };
@@ -705,7 +970,8 @@ async function createDataBackup(reason = "scheduled") {
     files: fs.readdirSync(targetDir),
     papers: papers.length,
     attempts: loadAttempts().length,
-    sessions: Object.keys(loadSessions()).length
+    sessions: Object.keys(loadSessions()).length,
+    ...coreTableCounts()
   });
   pruneBackups();
   return targetDir;
@@ -749,6 +1015,26 @@ function parseCookies(header = "") {
     cookies[rawKey] = decodeURIComponent(rawValue.join("="));
     return cookies;
   }, {});
+}
+
+function pageOptions(url, prefix, defaultPageSize = 20, maxPageSize = 100) {
+  const page = Math.max(1, Number(url.searchParams.get(`${prefix}Page`) || 1));
+  const requestedSize = Number(url.searchParams.get(`${prefix}PageSize`) || defaultPageSize);
+  const pageSize = Math.min(maxPageSize, Math.max(1, requestedSize || defaultPageSize));
+  return {
+    page,
+    pageSize,
+    offset: (page - 1) * pageSize
+  };
+}
+
+function paginationMeta(total, page, pageSize) {
+  return {
+    page,
+    pageSize,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / pageSize))
+  };
 }
 
 function currentUser(req, db) {
@@ -1523,27 +1809,38 @@ function classPayload(klass, db, viewer = null) {
   };
 }
 
-function classReportPayload(klass, db, papers, viewer = null) {
+function classReportPayload(klass, db, papers, viewer = null, options = {}) {
+  const studentPage = options.studentPage || { page: 1, pageSize: 30, offset: 0 };
+  const attemptPage = options.attemptPage || { page: 1, pageSize: 20, offset: 0 };
   const enrollments = db.enrollments.filter((item) => item.classId === klass.id);
-  const students = enrollments
+  const allStudents = enrollments
     .map((item) => db.users.find((user) => user.id === item.userId))
     .filter(Boolean);
   const assignments = db.assignments.filter((item) => item.classId === klass.id);
   const assignmentPaperIds = new Set(assignments.map((item) => item.paperId));
-  const studentIds = new Set(students.map((item) => item.id));
-  const attempts = queryAttempts({
-    userIds: Array.from(studentIds),
+  const allStudentIds = allStudents.map((item) => item.id);
+  const pagedStudents = allStudents.slice(studentPage.offset, studentPage.offset + studentPage.pageSize);
+  const pagedStudentIds = pagedStudents.map((item) => item.id);
+  const attemptFilters = {
+    userIds: allStudentIds,
     paperIds: assignmentPaperIds.size ? Array.from(assignmentPaperIds) : null
-  }, 100);
-  const studentRows = students.map((student) => {
-    const studentAttempts = attempts.filter((item) => item.userId === student.id);
+  };
+  const studentAttemptCounts = countAttemptsByUser(attemptFilters);
+  const attemptsForRows = queryAttempts({
+    userIds: pagedStudentIds,
+    paperIds: assignmentPaperIds.size ? Array.from(assignmentPaperIds) : null
+  }, 500);
+  const totalRecentAttempts = countAttempts(attemptFilters);
+  const recentAttempts = queryAttempts(attemptFilters, attemptPage.pageSize, attemptPage.offset);
+  const studentRows = pagedStudents.map((student) => {
+    const studentAttempts = attemptsForRows.filter((item) => item.userId === student.id);
     const bestObjective = studentAttempts
       .filter((item) => item.type === "objective")
       .sort((a, b) => ((b.score || 0) / (b.fullScore || 1)) - ((a.score || 0) / (a.fullScore || 1)))[0];
     return {
       ...publicUser(student, db),
       joinedAt: enrollments.find((item) => item.userId === student.id)?.createdAt || "",
-      attemptCount: studentAttempts.length,
+      attemptCount: studentAttemptCounts.get(student.id) || 0,
       bestObjective: bestObjective ? {
         paperTitle: bestObjective.paperTitle,
         score: bestObjective.score,
@@ -1560,12 +1857,19 @@ function classReportPayload(klass, db, papers, viewer = null) {
       paperTitle: papers.find((paper) => paper.id === assignment.paperId)?.title || assignment.title
     })),
     students: studentRows,
-    recentAttempts: attempts.slice(0, 30)
+    recentAttempts,
+    pagination: {
+      students: paginationMeta(allStudents.length, studentPage.page, studentPage.pageSize),
+      recentAttempts: paginationMeta(totalRecentAttempts, attemptPage.page, attemptPage.pageSize)
+    }
   };
 }
 
-function buildStudentSummary(user, db, papers) {
-  const attempts = queryAttempts({ userId: user.id });
+function buildStudentSummary(user, db, papers, options = {}) {
+  const completedPage = options.completedPage || { page: 1, pageSize: 8, offset: 0 };
+  const wrongPage = options.wrongPage || { page: 1, pageSize: 20, offset: 0 };
+  const attempts = queryAttempts({ userId: user.id }, 1000);
+  const totalAttempts = countAttempts({ userId: user.id });
   const classIds = new Set(db.enrollments.filter((item) => item.userId === user.id).map((item) => item.classId));
   const assignments = db.assignments
     .filter((item) => classIds.has(item.classId))
@@ -1593,6 +1897,9 @@ function buildStudentSummary(user, db, papers) {
       };
     })
     .filter(Boolean);
+  const pendingAssignments = assignments.filter((item) => !item.done);
+  const completedAssignments = assignments.filter((item) => item.done);
+  const pagedCompletedAssignments = completedAssignments.slice(completedPage.offset, completedPage.offset + completedPage.pageSize);
 
   const wrongMap = new Map();
   attempts
@@ -1617,11 +1924,13 @@ function buildStudentSummary(user, db, papers) {
         });
       });
     });
+  const wrongQuestions = Array.from(wrongMap.values()).sort((a, b) => b.lastWrongAt.localeCompare(a.lastWrongAt));
+  const pagedWrongQuestions = wrongQuestions.slice(wrongPage.offset, wrongPage.offset + wrongPage.pageSize);
+  const practiced = practicedPaperIds(user.id);
 
   const progress = Array.from({ length: 8 }, (_, index) => {
     const level = index + 1;
     const levelPapers = papers.filter((paper) => !isPaperHidden(db, paper) && (paper.category || "gesp") === "gesp" && Number(paper.level) === level);
-    const practiced = new Set(attempts.map((attempt) => attempt.paperId));
     return {
       level,
       total: levelPapers.length,
@@ -1631,14 +1940,20 @@ function buildStudentSummary(user, db, papers) {
 
   return {
     totals: {
-      attempts: attempts.length,
+      attempts: totalAttempts,
       assignments: assignments.length,
-      pendingAssignments: assignments.filter((item) => !item.done).length,
+      pendingAssignments: pendingAssignments.length,
       wrongQuestions: wrongMap.size
     },
-    assignments,
-    wrongQuestions: Array.from(wrongMap.values()).sort((a, b) => b.lastWrongAt.localeCompare(a.lastWrongAt)),
-    progress
+    assignments: [...pendingAssignments, ...pagedCompletedAssignments],
+    pendingAssignments,
+    completedAssignments: pagedCompletedAssignments,
+    wrongQuestions: pagedWrongQuestions,
+    progress,
+    pagination: {
+      completedAssignments: paginationMeta(completedAssignments.length, completedPage.page, completedPage.pageSize),
+      wrongQuestions: paginationMeta(wrongQuestions.length, wrongPage.page, wrongPage.pageSize)
+    }
   };
 }
 
@@ -1692,7 +2007,10 @@ async function api(req, res) {
   if (req.method === "GET" && url.pathname === "/api/student/summary") {
     const user = requireUser(req, res, db);
     if (!user) return;
-    return sendJson(res, 200, buildStudentSummary(user, db, papers));
+    return sendJson(res, 200, buildStudentSummary(user, db, papers, {
+      completedPage: pageOptions(url, "completed", 8, 30),
+      wrongPage: pageOptions(url, "wrong", 20, 50)
+    }));
   }
 
   if (req.method === "POST" && url.pathname === "/api/register") {
@@ -2252,7 +2570,10 @@ async function api(req, res) {
     if (!klass || (!isAdmin(user) && klass.teacherId !== user.id)) {
       return sendJson(res, 404, { message: "班级不存在或无权限。" });
     }
-    return sendJson(res, 200, classReportPayload(klass, db, papers, user));
+    return sendJson(res, 200, classReportPayload(klass, db, papers, user, {
+      studentPage: pageOptions(url, "students", 30, 100),
+      attemptPage: pageOptions(url, "attempts", 20, 100)
+    }));
   }
 
   if (req.method === "GET" && url.pathname === "/api/admin/users") {

@@ -1470,6 +1470,30 @@ async function api(req, res) {
     return sendJson(res, 200, { papers: papers.map((paper) => paperWithVisibility(db, paper, user)) });
   }
 
+  if (req.method === "POST" && url.pathname === "/api/admin/backup") {
+    const user = requireAdmin(req, res, db);
+    if (!user) return;
+    if (backupInProgress) return sendJson(res, 409, { message: "备份正在进行中，请稍后再试。" });
+    backupInProgress = true;
+    try {
+      const targetDir = await createDataBackup("manual");
+      const manifest = readJson(path.join(targetDir, "manifest.json"), {});
+      audit(db, user, "backup:create", path.basename(targetDir));
+      saveDb(db);
+      return sendJson(res, 200, {
+        backup: {
+          name: path.basename(targetDir),
+          path: targetDir,
+          files: manifest.files || [],
+          papers: manifest.papers || 0,
+          createdAt: manifest.createdAt || new Date().toISOString()
+        }
+      });
+    } finally {
+      backupInProgress = false;
+    }
+  }
+
   if (req.method === "POST" && url.pathname === "/api/admin/papers/export-word") {
     const user = requireTeacher(req, res, db);
     if (!user) return;

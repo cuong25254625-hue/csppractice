@@ -5,7 +5,7 @@
 ## P0 已落地
 
 - 自动备份：服务启动时自动备份一次，之后默认每 24 小时备份一次，备份目录为 `backups/`。
-- 手动备份：可执行 `npm run backup` 立即生成一份备份。
+- 手动备份：管理员可在“管理后台 - 系统设置 - 数据备份”点击“一键备份”，也可执行 `npm run backup` 立即生成一份备份。
 - 备份保留：默认保留最近 14 份，可通过 `BACKUP_RETENTION` 调整。
 - 试卷存储：试卷运行数据写入 SQLite 的 `app_state.papers`，同时继续同步 `data/papers.json` 作为人工检查和恢复镜像。
 - 原子写入：JSON 文件写入改为临时文件加重命名，降低写一半导致文件损坏的风险。
@@ -68,5 +68,7 @@ LOGIN_WINDOW_MINUTES=15
 cd /opt/csppractice
 npm run backup
 ```
+
+管理员后台一键备份入口：管理后台 -> 系统设置 -> 数据备份。
 
 恢复时优先使用同一备份目录中的 `runtime.sqlite` 和 `papers.json`。恢复前先停止 PM2，并保留当前 `data/` 目录的一份副本。

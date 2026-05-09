@@ -728,11 +728,149 @@ button:disabled {
   gap: 8px;
 }
 
-.manage-settings-grid {
+.settings-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.settings-top-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
   align-items: start;
+}
+
+.settings-card {
+  height: 100%;
+}
+
+.settings-card .panel-body {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-card-note {
+  margin: 0;
+}
+
+.settings-action-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.backup-result {
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.settings-compact-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.settings-compact-form input,
+.settings-compact-form select {
+  min-height: 38px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 10px;
+  background: #fff;
+}
+
+.settings-compact-form .primary-btn {
+  justify-self: end;
+}
+
+.setting-list {
+  margin-top: 0;
+}
+
+.settings-user-panel .panel-body {
+  padding-top: 16px;
+}
+
+.user-admin-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(320px, 1.35fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.settings-block {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #f8fafc;
+}
+
+.settings-block .subhead {
+  margin: 0;
+}
+
+.user-list-block {
+  grid-column: 1 / -1;
+}
+
+.user-list-dropdown {
+  gap: 12px;
+}
+
+.user-list-dropdown > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 700;
+}
+
+.user-list-dropdown > summary::-webkit-details-marker {
+  display: none;
+}
+
+.user-list-dropdown > summary::after {
+  content: "展开";
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 9px;
+  color: var(--brand);
+  background: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.user-list-dropdown[open] > summary::after {
+  content: "收起";
+}
+
+.user-admin-list {
+  margin-top: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.user-admin-list li {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #fff;
+}
+
+.user-admin-list li span:first-child {
+  min-width: 0;
+}
+
+.user-admin-list li .muted {
+  overflow-wrap: anywhere;
 }
 
 .class-create-form {
@@ -1798,7 +1936,9 @@ mjx-container.mjx-explorer-active > mjx-help {
   .program-grid,
   .guide-layout,
   .manage-class-layout,
-  .manage-settings-grid,
+  .settings-top-grid,
+  .user-admin-grid,
+  .user-admin-list,
   .stat-grid {
     grid-template-columns: 1fr;
   }
@@ -1915,6 +2055,15 @@ mjx-container.mjx-explorer-active > mjx-help {
   .nav {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .settings-compact-form {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-compact-form .primary-btn,
+  .settings-action-row .primary-btn {
+    width: 100%;
   }
 
   .account-dropdown {

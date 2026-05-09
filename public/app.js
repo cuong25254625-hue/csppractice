@@ -965,6 +965,7 @@ async function renderManage() {
   document.querySelector("#addAllStudents")?.addEventListener("click", () => addStudentsToActiveClass(true));
   document.querySelector("#createUser")?.addEventListener("click", createUser);
   document.querySelector("#importUsers")?.addEventListener("click", importUsersFromExcel);
+  document.querySelector("#createBackup")?.addEventListener("click", createBackup);
   document.querySelector("#newRole")?.addEventListener("change", updateUserTeacherField);
   document.querySelector("#bulkRole")?.addEventListener("change", updateUserTeacherField);
   updateUserTeacherField();
@@ -1327,10 +1328,16 @@ function renderClassManageCard(klass) {
 }
 
 function renderManageSettingsSection() {
+  if (!isAdmin()) {
+    return `<div class="settings-shell"><div class="panel"><div class="panel-head"><h2>考试类型</h2></div><div class="panel-body"><p class="muted">考试类型由管理员维护。</p></div></div></div>`;
+  }
   return `
-    <div class="manage-settings-grid">
-      ${isAdmin() ? renderExamTypeAdmin() : `<div class="panel"><div class="panel-head"><h2>考试类型</h2></div><div class="panel-body"><p class="muted">考试类型由管理员维护。</p></div></div>`}
-      ${isAdmin() ? renderUserAdmin() : ""}
+    <div class="settings-shell">
+      ${renderUserAdmin()}
+      <div class="settings-top-grid">
+        ${renderBackupAdmin()}
+        ${renderExamTypeAdmin()}
+      </div>
     </div>
   `;
 }
@@ -1969,21 +1976,56 @@ function renderClassStudentAdder(klass) {
 
 function renderExamTypeAdmin() {
   return `
-    <div class="panel">
+    <div class="panel settings-card">
       <div class="panel-head"><h2>考试类型</h2></div>
       <div class="panel-body">
-        <div class="stack-form">
+        <div class="settings-compact-form">
           <input id="newExamTypeId" placeholder="类型 ID，如 noip">
           <input id="newExamTypeName" placeholder="显示名称，如 NOIP 初赛">
           <label class="inline-check"><input id="newExamTypeLevelEnabled" type="checkbox">需要等级</label>
           <button class="primary-btn" type="button" id="saveExamType">保存类型</button>
         </div>
-        <ul class="mini-list exam-type-list" style="margin-top: 12px;">
+        <ul class="mini-list exam-type-list setting-list">
           ${state.examTypes.map((type) => `<li><span>${escapeHtml(type.name)}<div class="muted">${escapeHtml(type.id)} · ${type.levelEnabled ? "有等级" : "无等级"}${type.builtIn ? " · 内置" : ""}</div></span>${type.builtIn ? `<span class="muted">固定</span>` : `<button class="danger-btn" type="button" data-delete-exam-type="${type.id}">删除</button>`}</li>`).join("")}
         </ul>
       </div>
     </div>
   `;
+}
+
+function renderBackupAdmin() {
+  return `
+    <div class="panel settings-card">
+      <div class="panel-head"><h2>数据备份</h2></div>
+      <div class="panel-body">
+        <p class="muted settings-card-note">立即备份当前运行数据、试卷镜像和 SQLite 数据库，备份文件保存在服务器的 backups 目录。</p>
+        <div class="settings-action-row">
+          <button class="primary-btn" type="button" id="createBackup">一键备份</button>
+        </div>
+        <div class="backup-result muted" id="backupResult">自动备份会在服务启动时执行，之后按配置定时执行。</div>
+      </div>
+    </div>
+  `;
+}
+
+async function createBackup() {
+  const button = document.querySelector("#createBackup");
+  const result = document.querySelector("#backupResult");
+  if (button) button.disabled = true;
+  if (result) result.textContent = "正在备份，请稍候...";
+  try {
+    const data = await api("/api/admin/backup", { method: "POST" });
+    const backup = data.backup || {};
+    if (result) {
+      result.innerHTML = `备份完成：<strong>${escapeHtml(backup.name || "")}</strong><br>文件：${(backup.files || []).map(escapeHtml).join("、") || "无"}；试卷 ${backup.papers || 0} 套。`;
+    }
+    notify("备份已完成。");
+  } catch (error) {
+    if (result) result.textContent = error.message;
+    notify(error.message);
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 async function loadClassReport(classId) {
@@ -2080,27 +2122,36 @@ function renderUserAdmin() {
   const teachers = state.manage.users.filter((user) => user.role === "teacher" || user.role === "admin");
   const teacherOptions = `<option value="">不绑定老师</option>${teachers.map((teacher) => `<option value="${teacher.id}">${escapeHtml(teacher.username)} · ${roleName(teacher.role)}</option>`).join("")}`;
   return `
-    <div class="panel">
+    <div class="panel settings-user-panel">
       <div class="panel-head"><h2>用户管理</h2><span class="muted">${state.manage.users.length} 个账号</span></div>
       <div class="panel-body">
-        <h3 class="subhead">单个创建</h3>
-        <div class="stack-form">
-          <input id="newUsername" placeholder="新账号">
-          <input id="newPassword" type="password" placeholder="初始密码">
-          <select id="newRole"><option value="student">学生</option><option value="teacher">教师</option><option value="admin">管理员</option></select>
-          <select id="newStudentTeacher">${teacherOptions}</select>
-          <button class="primary-btn" type="button" id="createUser">创建用户</button>
+        <div class="user-admin-grid">
+          <section class="settings-block">
+            <h3 class="subhead">单个创建</h3>
+            <div class="stack-form">
+              <input id="newUsername" placeholder="新账号">
+              <input id="newPassword" type="password" placeholder="初始密码">
+              <select id="newRole"><option value="student">学生</option><option value="teacher">教师</option><option value="admin">管理员</option></select>
+              <select id="newStudentTeacher">${teacherOptions}</select>
+              <button class="primary-btn" type="button" id="createUser">创建用户</button>
+            </div>
+          </section>
+          <section class="settings-block">
+            <h3 class="subhead">Excel 批量导入</h3>
+            <div class="bulk-import-box">
+              <select id="bulkRole"><option value="student">创建为学生账号</option><option value="teacher">创建为教师账号</option></select>
+              <select id="bulkStudentTeacher">${teacherOptions}</select>
+              <input id="bulkUserFile" type="file" accept=".xlsx,.xls,.csv">
+              <button class="primary-btn" type="button" id="importUsers">上传并创建</button>
+            </div>
+            <p class="muted import-hint">Excel 第一行表头包含“用户名”和“密码”即可；也支持 username/password。</p>
+            ${renderImportResult()}
+          </section>
+          <details class="settings-block user-list-block user-list-dropdown">
+            <summary><span>最近账号</span><span class="muted">显示最近 8 个</span></summary>
+            <ul class="mini-list user-admin-list">${state.manage.users.slice(0, 8).map((user) => `<li><span>${escapeHtml(user.username)}<div class="muted">${roleName(user.role)}${user.teacherName ? ` · ${escapeHtml(user.teacherName)}` : ""}</div></span><span class="muted">${user.attemptCount} 次</span></li>`).join("")}</ul>
+          </details>
         </div>
-        <h3 class="subhead">Excel 批量导入</h3>
-        <div class="bulk-import-box">
-          <select id="bulkRole"><option value="student">创建为学生账号</option><option value="teacher">创建为教师账号</option></select>
-          <select id="bulkStudentTeacher">${teacherOptions}</select>
-          <input id="bulkUserFile" type="file" accept=".xlsx,.xls,.csv">
-          <button class="primary-btn" type="button" id="importUsers">上传并创建</button>
-        </div>
-        <p class="muted import-hint">Excel 第一行表头包含“用户名”和“密码”即可；也支持 username/password。</p>
-        ${renderImportResult()}
-        <ul class="mini-list" style="margin-top: 12px;">${state.manage.users.slice(0, 8).map((user) => `<li><span>${escapeHtml(user.username)}<div class="muted">${roleName(user.role)}${user.teacherName ? ` · ${escapeHtml(user.teacherName)}` : ""}</div></span><span class="muted">${user.attemptCount} 次</span></li>`).join("")}</ul>
       </div>
     </div>
   `;

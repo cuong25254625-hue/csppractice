@@ -590,6 +590,32 @@ button:disabled {
   align-items: start;
 }
 
+.manage-class-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 18px;
+  align-items: start;
+}
+
+.class-manage-toolbar {
+  margin-bottom: 12px;
+}
+
+.class-manage-toolbar input {
+  width: 100%;
+}
+
+.class-detail-summary {
+  display: grid;
+  gap: 14px;
+}
+
+.class-report-grid {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
 .manage-paper-layout {
   display: grid;
   gap: 18px;
@@ -1325,9 +1351,7 @@ button:disabled {
 }
 
 .action-panel {
-  position: sticky;
-  top: 78px;
-  z-index: 1;
+  position: static;
 }
 
 .class-student-adder {
@@ -2118,6 +2142,7 @@ mjx-container.mjx-explorer-active > mjx-help {
   .program-grid,
   .guide-layout,
   .manage-class-layout,
+  .manage-class-detail,
   .settings-top-grid,
   .user-admin-grid,
   .user-admin-list,

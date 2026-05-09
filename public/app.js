@@ -10,7 +10,7 @@ const state = {
   allowRegistration: true,
   dashboard: { attemptsPage: 1, attemptsPagination: null },
   study: { completedPage: 1, wrongPage: 1 },
-  manage: { papers: [], overview: null, users: [], userTeachers: [], students: [], usersPagination: null, studentsPagination: null, backups: [], editPaper: null, classReport: null, overviewAttemptsPage: 1, classReportPages: { studentsPage: 1, attemptsPage: 1 }, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" } }
+  manage: { papers: [], overview: null, users: [], userTeachers: [], students: [], usersPagination: null, studentsPagination: null, backups: [], editPaper: null, classReport: null, overviewAttemptsPage: 1, classReportPages: { studentsPage: 1, attemptsPage: 1 }, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" }, classKeyword: "" }
 };
 
 const app = document.querySelector("#app");
@@ -902,25 +902,26 @@ async function renderClasses() {
   const selectedId = (location.hash || "").startsWith("#/classes/") ? decodeURIComponent((location.hash || "").replace("#/classes/", "")) : "";
   const selectedClass = selectedId ? state.classes.find((klass) => klass.id === selectedId) || null : null;
   const classAssignments = selectedClass ? (data.assignments || []).filter((item) => item.classId === selectedClass.id) : [];
-  app.innerHTML = `
-    <div class="grid">
+  if (selectedClass) {
+    app.innerHTML = `
       <section class="panel">
-        <div class="panel-head"><h1>${selectedClass ? escapeHtml(selectedClass.name) : "我的班级"}</h1><span class="muted">${selectedClass ? `${classAssignments.length} 个作业` : `${state.classes.length} 个班级`}</span></div>
+        <div class="panel-head"><h1>${escapeHtml(selectedClass.name)}</h1><a class="secondary-btn compact-action" href="#/classes">返回班级</a></div>
+        <div class="panel-body">
+          <div class="meta"><span>${escapeHtml(selectedClass.categoryName || categoryName(selectedClass.category))}</span><span>教师 ${escapeHtml(selectedClass.teacherName)}</span><span>学生 ${selectedClass.studentCount}</span><span>作业 ${classAssignments.length}</span></div>
+          <div class="class-detail-block"><h2>作业列表</h2><ul class="class-assignment-list">${classAssignments.map(renderClassAssignmentItem).join("") || `<li class="muted">这个班级还没有发布作业</li>`}</ul></div>
+        </div>
+      </section>
+    `;
+    return;
+  }
+  app.innerHTML = `
+    <section class="panel">
+        <div class="panel-head"><h1>我的班级</h1><span class="muted">${state.classes.length} 个班级</span></div>
         <div class="panel-body">
           <div class="form-grid"><input id="joinCode" placeholder="输入教师给的邀请码"><button class="primary-btn" type="button" id="joinClass">加入班级</button></div>
           <ul class="paper-list" style="margin-top: 14px;">${state.classes.map((klass) => `<li class="paper-item ${selectedClass?.id === klass.id ? "active" : ""}"><span class="paper-icon">${examTypeById(klass.category).levelEnabled ? `${klass.level}级` : "初赛"}</span><div><h3><a href="#/classes/${encodeURIComponent(klass.id)}">${escapeHtml(klass.name)}</a></h3><div class="meta"><span>${escapeHtml(klass.categoryName || categoryName(klass.category))}</span><span>教师 ${escapeHtml(klass.teacherName)}</span><span>学生 ${klass.studentCount}</span><span>作业 ${klass.assignmentCount}</span></div></div><a class="secondary-btn" href="#/classes/${encodeURIComponent(klass.id)}">查看作业</a></li>`).join("") || `<li class="empty">还没有加入班级</li>`}</ul>
-          ${selectedClass ? `<div class="class-detail-block"><h2>${escapeHtml(selectedClass.name)}作业列表</h2><ul class="class-assignment-list">${classAssignments.map(renderClassAssignmentItem).join("") || `<li class="muted">这个班级还没有发布作业</li>`}</ul></div>` : ""}
         </div>
-      </section>
-      <aside class="side-stack">
-        <div class="panel">
-          <div class="panel-head"><h2>${selectedClass ? `${escapeHtml(selectedClass.name)}作业` : "班级作业"}</h2><span class="muted">${classAssignments.length} 项</span></div>
-          <div class="panel-body">
-            ${selectedClass ? `<ul class="mini-list">${classAssignments.slice(0, 5).map((item) => `<li><span><a href="#/paper/${item.paperId}">${escapeHtml(item.paperTitle || item.title)}</a><div class="muted">${assignmentTimeText(item)}</div></span>${assignmentScoreBadge(item)}</li>`).join("") || `<li class="muted">这个班级还没有发布作业</li>`}</ul>` : `<p class="muted">选择一个班级后查看作业。</p>`}
-          </div>
-        </div>
-      </aside>
-    </div>
+    </section>
   `;
   document.querySelector("#joinClass").addEventListener("click", joinClass);
 }
@@ -978,6 +979,8 @@ async function renderManage() {
         attemptsPage: String(pages.attemptsPage || 1)
       });
       state.manage.classReport = await api(`/api/classes/${encodeURIComponent(routeClassId)}/report?${params.toString()}`);
+    } else if (!(location.hash || "").startsWith("#/manage/classes/")) {
+      state.manage.classReport = null;
     }
   } catch (error) {
     notify(error.message);
@@ -994,7 +997,7 @@ async function renderManage() {
       </div>
       <div class="manage-tabs" role="tablist">
         ${manageTabButton("papers", "试卷题库", tab)}
-        ${manageTabButton("classes", "班级学情", tab)}
+        ${manageTabButton("classes", "班级管理", tab)}
         ${manageTabButton("settings", "系统设置", tab)}
       </div>
       <div class="manage-section" ${tab === "papers" ? "" : "hidden"}>${renderManagePapersSection()}</div>
@@ -1053,6 +1056,27 @@ async function renderManage() {
     state.manage.paperFilter = { category: "all", keyword: "" };
     renderManage();
   });
+  document.querySelector("#classKeyword")?.addEventListener("input", (event) => {
+    const keyword = event.target.value.trim().toLowerCase();
+    state.manage.classKeyword = event.target.value;
+    let visible = 0;
+    document.querySelectorAll("[data-class-card-search]").forEach((card) => {
+      const matched = !keyword || String(card.dataset.classCardSearch || "").includes(keyword);
+      card.hidden = !matched;
+      if (matched) visible += 1;
+    });
+    const total = state.manage.overview?.classes?.length || 0;
+    const countText = document.querySelector("#classCountText");
+    if (countText) countText.textContent = `${visible} / ${total} 个班级`;
+    const noResults = document.querySelector("#classNoResults");
+    if (noResults) noResults.hidden = visible > 0;
+  });
+  document.querySelector("[data-back-class-list]")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    state.manage.classReport = null;
+    history.replaceState(null, "", "#/manage");
+    renderManage();
+  });
   document.querySelector("#createClass")?.addEventListener("click", createClass);
   document.querySelector("#classCategory")?.addEventListener("change", updateClassLevelVisibility);
   updateClassLevelVisibility();
@@ -1063,10 +1087,6 @@ async function renderManage() {
     if (button.dataset.pageTarget === "report-attempts") state.manage.classReportPages.attemptsPage = page;
     const classId = state.manage.classReport?.class?.id;
     if (classId) loadClassReport(classId);
-  }));
-  document.querySelectorAll("[data-page-target='overview-attempts']").forEach((button) => button.addEventListener("click", () => {
-    state.manage.overviewAttemptsPage = Math.max(1, Number(button.dataset.page || 1));
-    renderManage();
   }));
   document.querySelectorAll("[data-page-target='manage-users']").forEach((button) => button.addEventListener("click", () => {
     state.manage.usersPagination = { ...(state.manage.usersPagination || {}), page: Math.max(1, Number(button.dataset.page || 1)) };
@@ -1131,10 +1151,10 @@ function renderGuide() {
               <ol class="guide-steps">
                 <li><strong>管理员登录。</strong>使用管理员账号进入管理后台，先确认考试类型、教师账号和学生账号是否准备好。</li>
                 <li><strong>创建或导入试卷。</strong>可以在“试卷题库”里手动建卷，也可以先导出 Word 模板，线下编辑后再导入。</li>
-                <li><strong>创建班级。</strong>在“班级学情”中创建班级，选择考试类型和等级。</li>
-                <li><strong>添加学生。</strong>学生可以用邀请码加入，也可以由教师或管理员在班级学情里批量添加。</li>
+                <li><strong>创建班级。</strong>在“班级管理”中创建班级，选择考试类型和等级。</li>
+                <li><strong>添加学生。</strong>学生可以用邀请码加入，也可以由教师或管理员进入班级后批量添加。</li>
                 <li><strong>发布作业。</strong>在班级页右侧“发布作业”选择班级、试卷和截止日期。</li>
-                <li><strong>查看学情。</strong>点击班级的“查看学情”，查看学生练习次数、最好成绩、作业和最近答题。</li>
+                <li><strong>查看班级。</strong>点击班级的“进入班级”，查看学生练习次数、最好成绩、作业和最近答题。</li>
               </ol>
               <p class="guide-note">建议先用一个测试班级完整走一遍流程，确认试卷、作业和学生账号都正常后，再正式给学生使用。</p>
             </div>
@@ -1214,20 +1234,20 @@ function renderGuide() {
             <div class="panel-head"><h2>班级与作业</h2></div>
             <div class="panel-body">
               <h3>创建班级</h3>
-              <p>进入“班级学情”，填写班级名称，选择考试类型和等级后点击“创建班级”。每个班级会自动生成邀请码，邀请码仅教师和管理员可见。</p>
+              <p>进入“班级管理”，填写班级名称，选择考试类型和等级后点击“创建班级”。每个班级会自动生成邀请码，邀请码仅教师和管理员可见。</p>
               <h3>学生加入班级</h3>
               <ul>
                 <li><strong>学生自行加入：</strong>教师把邀请码发给学生，学生进入“班级”页面输入邀请码。</li>
-                <li><strong>教师批量添加：</strong>打开某个班级的学情，在“添加学生到班级”中勾选学生或点击“添加全部可选学生”。</li>
+                <li><strong>教师批量添加：</strong>进入某个班级，在“添加学生到班级”中勾选学生或点击“添加全部可选学生”。</li>
               </ul>
               <h3>发布作业</h3>
               <ol class="guide-steps">
-                <li>在“班级学情”右侧上方找到“发布作业”。</li>
+                <li>在“班级管理”进入某个班级后，找到“发布作业”。</li>
                 <li>选择班级和试卷，按需要设置截止日期。</li>
                 <li>点击“发布作业”。学生进入该班级后即可看到该班级作业。</li>
               </ol>
-              <h3>查看学情</h3>
-              <p>点击班级列表中的“查看学情”，可以看到学生数量、作业数量、答题次数、学生练习数据、已发布作业和最近答题记录。</p>
+              <h3>查看班级</h3>
+              <p>点击班级列表中的“进入班级”，可以看到学生数量、作业数量、答题次数、学生练习数据、已发布作业和最近答题记录。</p>
             </div>
           </section>
 
@@ -1410,34 +1430,69 @@ function renderPaperManageRow(paper) {
 
 function renderManageClassesSection(overview) {
   const classes = overview.classes || [];
+  if (state.manage.classReport) return renderClassManagementDetail(overview);
+  const keyword = (state.manage.classKeyword || "").trim().toLowerCase();
+  const filtered = classes.filter((klass) => {
+    if (!keyword) return true;
+    return `${klass.name} ${klass.teacherName} ${klass.categoryName || categoryName(klass.category)} ${klass.inviteCode || ""}`.toLowerCase().includes(keyword);
+  });
   return `
-    <div class="manage-class-layout">
-      <div class="panel">
-        <div class="panel-head"><h2>班级列表</h2><span class="muted">点击“查看学情”进入班级报告</span></div>
+    <div class="panel">
+        <div class="panel-head"><h2>班级管理</h2><span class="muted" id="classCountText">${filtered.length} / ${classes.length} 个班级</span></div>
         <div class="panel-body">
+          <div class="class-manage-toolbar">
+            <input id="classKeyword" placeholder="搜索班级、教师或邀请码" value="${escapeHtml(state.manage.classKeyword || "")}">
+          </div>
           <div class="stack-form class-create-form"><input id="className" placeholder="班级名称，如 周六一级班"><select id="classCategory">${state.examTypes.map((type) => `<option value="${type.id}">${escapeHtml(type.name)}</option>`).join("")}</select><select id="classLevel">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}">${index + 1} 级</option>`).join("")}</select><button class="primary-btn" type="button" id="createClass">创建班级</button></div>
           <div class="class-card-list">
             ${classes.map(renderClassManageCard).join("") || `<div class="empty">暂无班级，先创建一个班级。</div>`}
+            ${classes.length ? `<div class="empty" id="classNoResults" ${filtered.length ? "hidden" : ""}>没有匹配的班级。</div>` : ""}
           </div>
+        </div>
+    </div>
+  `;
+}
+
+function renderClassManagementDetail(overview) {
+  const report = state.manage.classReport;
+  const classes = overview.classes || [];
+  return `
+    <div class="manage-class-detail">
+      <div class="panel">
+        <div class="panel-head"><h2>${escapeHtml(report.class.name)}</h2><a class="secondary-btn compact-action" href="#/manage" data-back-class-list>返回班级列表</a></div>
+        <div class="panel-body">
+          ${renderClassReport()}
         </div>
       </div>
       <div class="side-stack">
         ${renderAssignmentPublisher(classes)}
-        ${renderOverviewRecentAttempts(overview)}
-        ${renderClassReport()}
+        ${renderPublishedAssignments(report)}
+        ${renderClassRecentAttempts(report)}
       </div>
     </div>
   `;
 }
 
-function renderOverviewRecentAttempts(overview) {
-  const attempts = overview.recentAttempts || [];
+function renderPublishedAssignments(report) {
+  const assignments = report.assignments || [];
   return `
     <div class="panel action-panel">
-      <div class="panel-head"><h2>最近答题</h2><span class="muted">${overview.pagination?.recentAttempts?.total ?? attempts.length} 条</span></div>
+      <div class="panel-head"><h2>已发布作业</h2><span class="muted">${assignments.length} 个</span></div>
+      <div class="panel-body">
+        <ul class="mini-list">${assignments.map((item) => `<li><span>${escapeHtml(item.paperTitle || item.title)}<div class="muted">${assignmentTimeText(item)}</div></span></li>`).join("") || `<li class="muted">暂无作业</li>`}</ul>
+      </div>
+    </div>
+  `;
+}
+
+function renderClassRecentAttempts(report) {
+  const attempts = report.recentAttempts || [];
+  return `
+    <div class="panel action-panel">
+      <div class="panel-head"><h2>最近答题</h2><span class="muted">${report.pagination?.recentAttempts?.total ?? attempts.length} 条</span></div>
       <div class="panel-body">
         <ul class="mini-list">${attempts.map((item) => `<li><span>${escapeHtml(item.username || "")}<div class="muted">${escapeHtml(item.paperTitle || item.questionTitle || "")}</div></span><span class="muted">${item.type === "objective" ? `${item.score}/${item.fullScore}` : `${item.passed || 0}/${item.total || 0}`}</span></li>`).join("") || `<li class="muted">暂无答题记录</li>`}</ul>
-        ${renderPager(overview.pagination?.recentAttempts, "overview-attempts")}
+        ${renderPager(report.pagination?.recentAttempts, "report-attempts")}
       </div>
     </div>
   `;
@@ -1445,16 +1500,17 @@ function renderOverviewRecentAttempts(overview) {
 
 function renderAssignmentPublisher(classes) {
   const activeClassId = state.manage.classReport?.class?.id || classes[0]?.id || "";
+  const scopedClass = state.manage.classReport?.class || null;
   return `
     <div class="panel action-panel">
       <div class="panel-head"><h2>发布作业</h2></div>
       <div class="panel-body">
         <div class="stack-form">
-          <label><span>发布到班级</span><select id="assignmentClass">${classes.map((klass) => `<option value="${klass.id}" ${activeClassId === klass.id ? "selected" : ""}>${escapeHtml(klass.name)}</option>`).join("")}</select></label>
+          <label><span>发布到班级</span><select id="assignmentClass" ${scopedClass ? "disabled" : ""}>${classes.map((klass) => `<option value="${klass.id}" ${activeClassId === klass.id ? "selected" : ""}>${escapeHtml(klass.name)}</option>`).join("")}</select></label>
           <label><span>选择试卷</span><select id="assignmentPaper">${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}</select></label>
           <label><span>开始时间</span><input id="assignmentStart" type="datetime-local"></label>
           <label><span>结束时间</span><input id="assignmentEnd" type="datetime-local"></label>
-          <button class="primary-btn" type="button" id="createAssignment">发布作业</button>
+          <button class="primary-btn" type="button" id="createAssignment">确认发布作业</button>
         </div>
       </div>
     </div>
@@ -1463,15 +1519,17 @@ function renderAssignmentPublisher(classes) {
 
 function renderClassManageCard(klass) {
   const active = state.manage.classReport?.class?.id === klass.id;
+  const searchText = `${klass.name} ${klass.teacherName} ${klass.categoryName || categoryName(klass.category)} ${klass.inviteCode || ""}`.toLowerCase();
+  const keyword = (state.manage.classKeyword || "").trim().toLowerCase();
   return `
-    <article class="class-manage-card ${active ? "active" : ""}">
+    <article class="class-manage-card ${active ? "active" : ""}" data-class-card-search="${escapeHtml(searchText)}" ${keyword && !searchText.includes(keyword) ? "hidden" : ""}>
       <div>
         <h3>${escapeHtml(klass.name)}</h3>
         <div class="meta"><span>${escapeHtml(klass.categoryName || categoryName(klass.category))}</span>${klass.level ? `<span>${klass.level} 级</span>` : ""}<span>邀请码 ${escapeHtml(klass.inviteCode)}</span></div>
       </div>
       <div class="class-card-actions">
         <span class="muted">${klass.studentCount} 名学生 · ${klass.assignmentCount} 个作业</span>
-        <a class="primary-btn" href="#/manage/classes/${encodeURIComponent(klass.id)}">进入学情</a>
+        <a class="primary-btn" href="#/manage/classes/${encodeURIComponent(klass.id)}">进入班级</a>
       </div>
     </article>
   `;
@@ -2105,40 +2163,35 @@ function updateClassLevelVisibility() {
 function renderClassReport() {
   const report = state.manage.classReport;
   if (!report) {
-    return `<div class="panel class-report-card report-empty"><div class="panel-head"><h2>班级学情</h2></div><div class="panel-body"><div class="report-empty-icon">学情</div><p>选择左侧班级，点击 <strong>查看学情</strong>。</p><p class="muted">这里会显示学生练习次数、客观题最好成绩、编程题通过数、作业和最近答题记录。</p></div></div>`;
+    return "";
   }
   const klass = report.class;
   const assignments = report.assignments || [];
   const students = report.students || [];
-  const attempts = report.recentAttempts || [];
   const studentMeta = report.pagination?.students || { total: students.length };
   const attemptMeta = report.pagination?.recentAttempts || { total: students.reduce((sum, student) => sum + Number(student.attemptCount || 0), 0) };
   return `
-    <div class="panel class-report-card">
-      <div class="panel-head">
-        <h2>${escapeHtml(klass.name)}</h2>
-        <div class="submit-row compact-head-actions"><span class="muted">${escapeHtml(klass.categoryName || categoryName(klass.category))}${klass.level ? ` · ${klass.level} 级` : ""}</span><a class="secondary-btn compact-action" href="#/classes/${encodeURIComponent(klass.id)}">查看班级作业</a></div>
-      </div>
-      <div class="panel-body">
+    <div class="class-report-card">
+      <div class="class-detail-summary">
+        <div class="meta"><span>${escapeHtml(klass.categoryName || categoryName(klass.category))}${klass.level ? ` · ${klass.level} 级` : ""}</span><span>邀请码 ${escapeHtml(klass.inviteCode || "")}</span><a href="#/classes/${encodeURIComponent(klass.id)}">查看学生端作业页</a></div>
         <div class="stat-grid compact-stats">
           ${statCard("学生", studentMeta.total)}
           ${statCard("作业", assignments.length)}
           ${statCard("答题", attemptMeta.total)}
         </div>
+      </div>
+      <div class="class-report-grid">
         ${renderClassStudentAdder(klass)}
-        <h3 class="subhead">学生练习数据</h3>
-        <table class="report-table">
-          <thead><tr><th>学生</th><th>练习</th><th>客观题最好成绩</th><th>编程通过</th></tr></thead>
-          <tbody>
-            ${students.map((student) => `<tr><td>${escapeHtml(student.username)}</td><td>${student.attemptCount} 次</td><td>${student.bestObjective ? `${renderScoreBadge(student.bestObjective.score, student.bestObjective.fullScore, "最好")}<div class="muted">${escapeHtml(student.bestObjective.paperTitle || "")}</div>` : `<span class="muted">暂无</span>`}</td><td>${student.acceptedPrograms} 题</td></tr>`).join("") || `<tr><td colspan="4" class="muted">暂无学生</td></tr>`}
-          </tbody>
-        </table>
-        ${renderPager(report.pagination?.students, "report-students")}
-        <h3 class="subhead">已发布作业</h3>
-        <ul class="mini-list">${assignments.map((item) => `<li><span>${escapeHtml(item.paperTitle || item.title)}<div class="muted">${assignmentTimeText(item)}</div></span></li>`).join("") || `<li class="muted">暂无作业</li>`}</ul>
-        <h3 class="subhead">最近答题</h3>
-        <ul class="mini-list">${attempts.map((item) => `<li><span>${escapeHtml(item.username || "")}<div class="muted">${escapeHtml(item.paperTitle || item.questionTitle || "")}</div></span><span class="muted">${item.type === "objective" ? `${item.score}/${item.fullScore}` : `${item.passed || 0}/${item.total || 0}`}</span></li>`).join("") || `<li class="muted">暂无答题记录</li>`}</ul>
-        ${renderPager(report.pagination?.recentAttempts, "report-attempts")}
+        <section>
+          <h3 class="subhead">学生练习数据</h3>
+          <table class="report-table">
+            <thead><tr><th>学生</th><th>练习</th><th>客观题最好成绩</th><th>编程通过</th></tr></thead>
+            <tbody>
+              ${students.map((student) => `<tr><td>${escapeHtml(student.username)}</td><td>${student.attemptCount} 次</td><td>${student.bestObjective ? `${renderScoreBadge(student.bestObjective.score, student.bestObjective.fullScore, "最好")}<div class="muted">${escapeHtml(student.bestObjective.paperTitle || "")}</div>` : `<span class="muted">暂无</span>`}</td><td>${student.acceptedPrograms} 题</td></tr>`).join("") || `<tr><td colspan="4" class="muted">暂无学生</td></tr>`}
+            </tbody>
+          </table>
+          ${renderPager(report.pagination?.students, "report-students")}
+        </section>
       </div>
     </div>
   `;
@@ -2287,7 +2340,7 @@ async function loadClassReport(classId, options = {}) {
       attemptsPage: String(pages.attemptsPage || 1)
     });
     state.manage.classReport = await api(`/api/classes/${encodeURIComponent(classId)}/report?${params.toString()}`);
-    if (!options.silent) notify("班级学情已加载。");
+    if (!options.silent) notify("班级已加载。");
     renderManage();
   } catch (error) {
     notify(error.message);
@@ -2365,7 +2418,7 @@ async function createAssignment() {
 
 async function addStudentsToActiveClass(all) {
   const classId = state.manage.classReport?.class?.id;
-  if (!classId) return notify("请先打开一个班级的学情。");
+  if (!classId) return notify("请先进入一个班级。");
   const candidates = (state.manage.students || []).filter((student) => !(student.enrolledClassIds || []).includes(classId));
   const selectedIds = all
     ? candidates.map((student) => student.id)

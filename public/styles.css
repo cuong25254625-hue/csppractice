@@ -557,6 +557,86 @@ button {
   gap: 18px;
 }
 
+.guide-shell {
+  display: grid;
+  gap: 18px;
+  padding: 22px 0;
+}
+
+.guide-hero .panel-head {
+  align-items: flex-start;
+}
+
+.guide-hero p {
+  margin: 6px 0 0;
+}
+
+.guide-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.guide-nav {
+  position: sticky;
+  top: 78px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: #fff;
+}
+
+.guide-nav a {
+  border-radius: 6px;
+  padding: 9px 10px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.guide-nav a:hover {
+  background: #ecfeff;
+  color: var(--brand);
+}
+
+.guide-content {
+  display: grid;
+  gap: 18px;
+}
+
+.guide-section {
+  scroll-margin-top: 82px;
+}
+
+.guide-section h3 {
+  margin: 18px 0 8px;
+  font-size: 16px;
+}
+
+.guide-section h3:first-child {
+  margin-top: 0;
+}
+
+.guide-section p,
+.guide-section li {
+  line-height: 1.75;
+}
+
+.guide-steps {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.guide-note {
+  border-left: 3px solid var(--brand);
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  background: #f0fdfa;
+  color: var(--text);
+}
+
 .paper-manage-filters {
   display: flex;
   flex-wrap: wrap;
@@ -1693,6 +1773,7 @@ mjx-container.mjx-explorer-active > mjx-help {
   .grid,
   .paper-layout,
   .program-grid,
+  .guide-layout,
   .manage-class-layout,
   .manage-settings-grid,
   .stat-grid {
@@ -1701,6 +1782,11 @@ mjx-container.mjx-explorer-active > mjx-help {
 
   .answer-card {
     position: static;
+  }
+
+  .guide-nav {
+    position: static;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .paper-item {
@@ -1785,6 +1871,10 @@ mjx-container.mjx-explorer-active > mjx-help {
 @media (max-width: 620px) {
   .shell {
     width: min(100% - 20px, 1180px);
+  }
+
+  .guide-nav {
+    grid-template-columns: 1fr;
   }
 
   .topbar-inner {

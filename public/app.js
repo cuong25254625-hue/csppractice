@@ -182,7 +182,7 @@ function examTypeById(id) {
 
 function setActiveNav(hash) {
   document.querySelectorAll("[data-link]").forEach((link) => link.classList.remove("active"));
-  const name = hash.startsWith("#/manage") ? "manage" : hash.startsWith("#/classes") ? "classes" : hash === "#/study" ? "study" : hash === "#/dashboard" ? "dashboard" : "home";
+  const name = hash.startsWith("#/manage") || hash === "#/guide" ? "manage" : hash.startsWith("#/classes") ? "classes" : hash === "#/study" ? "study" : hash === "#/dashboard" ? "dashboard" : "home";
   document.querySelector(`[data-link="${name}"]`)?.classList.add("active");
 }
 
@@ -194,6 +194,7 @@ function route() {
   else if (hash === "#/study") renderStudy();
   else if (hash === "#/classes" || hash.startsWith("#/classes/")) renderClasses();
   else if (hash === "#/manage") renderManage();
+  else if (hash === "#/guide") renderGuide();
   else renderHome();
   window.setTimeout(() => typesetMath(app), 0);
 }
@@ -894,7 +895,7 @@ async function renderManage() {
   app.innerHTML = `
     <section class="manage-shell">
       <div class="panel">
-        <div class="panel-head"><h1>教学管理台</h1><span class="muted">${roleName(state.user.role)}</span></div>
+        <div class="panel-head"><h1>教学管理台</h1><div class="submit-row"><a class="secondary-btn" href="#/guide">使用说明</a><span class="muted">${roleName(state.user.role)}</span></div></div>
         <div class="panel-body stat-grid">${statCard("试卷", overview.totals.papers || 0)}${statCard("班级", overview.totals.classes || 0)}${statCard("学生", overview.totals.students || 0)}${statCard("提交", overview.totals.attempts || 0)}</div>
       </div>
       <div class="manage-tabs" role="tablist">
@@ -970,6 +971,208 @@ async function renderManage() {
   document.querySelector("#saveExamType")?.addEventListener("click", saveExamType);
   document.querySelectorAll("[data-delete-exam-type]").forEach((button) => button.addEventListener("click", () => deleteExamType(button.dataset.deleteExamType)));
   typesetMath(app);
+}
+
+function renderGuide() {
+  if (!isTeacher()) {
+    app.innerHTML = `<div class="panel empty">这里需要教师或管理员权限。</div>`;
+    return;
+  }
+  app.innerHTML = `
+    <section class="guide-shell">
+      <div class="panel guide-hero">
+        <div class="panel-head">
+          <div>
+            <h1>网站使用说明</h1>
+            <p class="muted">面向管理员和教师，覆盖账号、试卷、Word 导入导出、班级、作业、学生端使用和服务器维护。</p>
+          </div>
+          <a class="secondary-btn" href="#/manage">返回管理台</a>
+        </div>
+      </div>
+
+      <div class="guide-layout">
+        <aside class="guide-nav">
+          <a href="#guide-start">快速开始</a>
+          <a href="#guide-roles">账号与角色</a>
+          <a href="#guide-papers">试卷设置</a>
+          <a href="#guide-word">Word 导入导出</a>
+          <a href="#guide-classes">班级与作业</a>
+          <a href="#guide-students">学生管理</a>
+          <a href="#guide-student-view">学生端使用</a>
+          <a href="#guide-ops">更新与备份</a>
+          <a href="#guide-faq">常见问题</a>
+        </aside>
+
+        <div class="guide-content">
+          <section class="panel guide-section" id="guide-start">
+            <div class="panel-head"><h2>快速开始</h2></div>
+            <div class="panel-body">
+              <ol class="guide-steps">
+                <li><strong>管理员登录。</strong>使用管理员账号进入管理后台，先确认考试类型、教师账号和学生账号是否准备好。</li>
+                <li><strong>创建或导入试卷。</strong>可以在“试卷题库”里手动建卷，也可以先导出 Word 模板，线下编辑后再导入。</li>
+                <li><strong>创建班级。</strong>在“班级学情”中创建班级，选择考试类型和等级。</li>
+                <li><strong>添加学生。</strong>学生可以用邀请码加入，也可以由教师或管理员在班级学情里批量添加。</li>
+                <li><strong>发布作业。</strong>在班级页右侧“发布作业”选择班级、试卷和截止日期。</li>
+                <li><strong>查看学情。</strong>点击班级的“查看学情”，查看学生练习次数、最好成绩、作业和最近答题。</li>
+              </ol>
+              <p class="guide-note">建议先用一个测试班级完整走一遍流程，确认试卷、作业和学生账号都正常后，再正式给学生使用。</p>
+            </div>
+          </section>
+
+          <section class="panel guide-section" id="guide-roles">
+            <div class="panel-head"><h2>账号与角色</h2></div>
+            <div class="panel-body">
+              <h3>管理员</h3>
+              <p>管理员拥有全部管理能力：创建教师、学生和管理员账号，维护考试类型，管理全部试卷，查看全部班级，并能把任意学生添加到任意班级。</p>
+              <h3>教师</h3>
+              <p>教师可以创建和维护试卷、创建自己的班级、发布作业、查看自己班级的学情，并把自己名下学生批量添加到班级。</p>
+              <h3>学生</h3>
+              <p>学生可以浏览未隐藏试卷、参加练习、查看记录、加入班级、查看班级作业和修改自己的密码。学生端不会显示班级邀请码。</p>
+              <h3>修改密码</h3>
+              <p>登录后点击右上角账号菜单里的“修改密码”，输入当前密码和新密码即可。管理员不需要知道学生当前密码，也建议不要长期共用默认密码。</p>
+            </div>
+          </section>
+
+          <section class="panel guide-section" id="guide-papers">
+            <div class="panel-head"><h2>试卷设置</h2></div>
+            <div class="panel-body">
+              <h3>试卷基础信息</h3>
+              <ul>
+                <li><strong>试卷 ID：</strong>每套试卷唯一标识。导入 Word 时，如果 ID 已存在会更新原试卷；如果不存在会新建试卷。</li>
+                <li><strong>标题：</strong>学生端和管理端显示的试卷名称，建议包含考试类型、等级、年份或专题。</li>
+                <li><strong>考试类型：</strong>如 GESP、CSP-J 初赛、CSP-S 初赛。GESP 支持等级，CSP-J/S 一般不需要等级。</li>
+                <li><strong>等级：</strong>仅在该考试类型启用等级时显示，范围为 1-8。</li>
+                <li><strong>年份、月份、语言、说明：</strong>用于检索、展示和区分试卷版本。</li>
+              </ul>
+              <h3>题型说明</h3>
+              <ul>
+                <li><strong>单选题：</strong>设置 4 个或更多选项，答案为一个选项。</li>
+                <li><strong>多选题：</strong>可设置多个正确选项，学生必须选中完整答案才得分。</li>
+                <li><strong>判断题：</strong>答案为“正确”或“错误”，未作答会按 0 分处理。</li>
+                <li><strong>阅读程序题 / 完善程序题：</strong>属于复合题，先填写题面和代码，再添加判断、单选或多选子题。</li>
+                <li><strong>编程题：</strong>当前默认关闭提交入口，待运行沙箱配置完成后再开放。</li>
+              </ul>
+              <h3>编辑建议</h3>
+              <ul>
+                <li>题目 ID 在同一套试卷内应保持唯一，方便错题本、提交记录和后续更新定位。</li>
+                <li>分值可以在建卷页面用“批量修改分值”工具统一设置。</li>
+                <li>题干、选项和解析支持 Markdown，可插入代码块、图片链接和数学公式。</li>
+                <li>试卷暂时不想给学生看到时，使用“隐藏”功能，不要直接删除。</li>
+              </ul>
+            </div>
+          </section>
+
+          <section class="panel guide-section" id="guide-word">
+            <div class="panel-head"><h2>Word 导入导出</h2></div>
+            <div class="panel-body">
+              <h3>导出 Word</h3>
+              <ol class="guide-steps">
+                <li>进入“管理台 - 试卷题库”。</li>
+                <li>勾选需要导出的试卷，点击“导出选中 Word”；也可以先按考试类型或名称筛选，再点击“导出筛选结果”。</li>
+                <li>系统会下载 <code>.docx</code> 文件，教师可以在 Word 或 WPS 中编辑。</li>
+              </ol>
+              <h3>导入 Word</h3>
+              <ol class="guide-steps">
+                <li>建议先导出一份系统 Word 模板，再在模板基础上复制和改题。</li>
+                <li>保留关键标签，例如“试卷ID:”“标题:”“题型:”“题目ID:”“题干:”“选项:”“答案:”“解析:”。</li>
+                <li>回到“试卷题库”，点击“导入 Word”，选择编辑后的 <code>.docx</code> 文件。</li>
+                <li>导入时，同 ID 试卷会更新；不存在的 ID 会新建。</li>
+              </ol>
+              <h3>Word 编写规则</h3>
+              <ul>
+                <li>每套试卷必须有“试卷ID”和“标题”。</li>
+                <li>每道题用“--- 题目 1 ---”这类分隔行开始，后面填写题型、题目 ID、分值等信息。</li>
+                <li>单选和多选的选项建议写成 <code>A. 内容</code>、<code>B. 内容</code>、<code>C. 内容</code>、<code>D. 内容</code>。</li>
+                <li>单选答案可写 <code>A</code> 或 <code>1</code>；多选答案可写 <code>A, C</code>；判断题答案写“正确”或“错误”。</li>
+                <li>如果导入失败，通常是关键标签被删除或试卷 ID/标题为空。可以重新导出模板，对照格式修改。</li>
+              </ul>
+            </div>
+          </section>
+
+          <section class="panel guide-section" id="guide-classes">
+            <div class="panel-head"><h2>班级与作业</h2></div>
+            <div class="panel-body">
+              <h3>创建班级</h3>
+              <p>进入“班级学情”，填写班级名称，选择考试类型和等级后点击“创建班级”。每个班级会自动生成邀请码，邀请码仅教师和管理员可见。</p>
+              <h3>学生加入班级</h3>
+              <ul>
+                <li><strong>学生自行加入：</strong>教师把邀请码发给学生，学生进入“班级”页面输入邀请码。</li>
+                <li><strong>教师批量添加：</strong>打开某个班级的学情，在“添加学生到班级”中勾选学生或点击“添加全部可选学生”。</li>
+              </ul>
+              <h3>发布作业</h3>
+              <ol class="guide-steps">
+                <li>在“班级学情”右侧上方找到“发布作业”。</li>
+                <li>选择班级和试卷，按需要设置截止日期。</li>
+                <li>点击“发布作业”。学生进入该班级后即可看到该班级作业。</li>
+              </ol>
+              <h3>查看学情</h3>
+              <p>点击班级列表中的“查看学情”，可以看到学生数量、作业数量、答题次数、学生练习数据、已发布作业和最近答题记录。</p>
+            </div>
+          </section>
+
+          <section class="panel guide-section" id="guide-students">
+            <div class="panel-head"><h2>学生管理</h2></div>
+            <div class="panel-body">
+              <h3>单个创建学生</h3>
+              <p>管理员进入“系统设置 - 用户管理”，填写账号、初始密码，角色选择“学生”。如果需要让某位教师管理该学生，请选择“所属老师”。</p>
+              <h3>批量导入学生</h3>
+              <p>Excel 第一行表头包含“用户名”和“密码”即可，也支持 <code>username</code> / <code>password</code>。导入前可以选择创建为学生账号或教师账号；创建学生账号时可以统一绑定所属老师。</p>
+              <h3>所属老师的作用</h3>
+              <ul>
+                <li>教师在“添加学生到班级”时，只能看到自己名下学生。</li>
+                <li>管理员可以看到全部学生，不受所属老师限制。</li>
+                <li>如果学生没有绑定老师，管理员仍可管理，普通教师不会在批量添加列表中看到该学生。</li>
+              </ul>
+            </div>
+          </section>
+
+          <section class="panel guide-section" id="guide-student-view">
+            <div class="panel-head"><h2>学生端使用</h2></div>
+            <div class="panel-body">
+              <ul>
+                <li><strong>试卷：</strong>学生首页显示所有未隐藏试卷，可按考试类型、等级和关键词筛选。</li>
+                <li><strong>提交：</strong>客观题提交前会弹出确认框，未作答题目会提示并按 0 分处理。</li>
+                <li><strong>记录：</strong>“记录”页面显示学生历史练习提交。</li>
+                <li><strong>学习中心：</strong>汇总待完成作业、练习进度和错题。</li>
+                <li><strong>班级：</strong>学生先点击进入某个班级，再查看该班级发布的试卷作业。</li>
+                <li><strong>改密码：</strong>右上角账号菜单可修改自己的登录密码。</li>
+              </ul>
+            </div>
+          </section>
+
+          <section class="panel guide-section" id="guide-ops">
+            <div class="panel-head"><h2>更新与备份</h2></div>
+            <div class="panel-body">
+              <h3>服务器更新</h3>
+              <pre class="code-block"><code><span class="code-line">cd /opt/csppractice</span><span class="code-line">git pull origin main</span><span class="code-line">npm install --omit=dev</span><span class="code-line">pm2 restart csppractice</span><span class="code-line">pm2 save</span></code></pre>
+              <h3>重要数据</h3>
+              <ul>
+                <li><strong>data/papers.json：</strong>试卷题库。</li>
+                <li><strong>data/runtime.sqlite：</strong>账号、班级、作业、提交记录、隐藏状态等运行数据。</li>
+                <li><strong>.env：</strong>如果服务器上配置过环境变量，也建议备份。</li>
+              </ul>
+              <h3>备份命令示例</h3>
+              <pre class="code-block"><code><span class="code-line">BACKUP=~/csppractice-backup-$(date +%Y%m%d-%H%M%S)</span><span class="code-line">mkdir -p "$BACKUP"</span><span class="code-line">cp data/papers.json "$BACKUP/"</span><span class="code-line">cp data/runtime.sqlite "$BACKUP/" 2>/dev/null || true</span><span class="code-line">cp .env "$BACKUP/" 2>/dev/null || true</span></code></pre>
+            </div>
+          </section>
+
+          <section class="panel guide-section" id="guide-faq">
+            <div class="panel-head"><h2>常见问题</h2></div>
+            <div class="panel-body">
+              <h3>学生看不到试卷</h3>
+              <p>检查试卷是否被隐藏；如果是班级作业，还要确认作业是否发布到学生所在班级。</p>
+              <h3>Word 导入后变成更新原试卷</h3>
+              <p>这是因为 Word 中的“试卷ID”与已有试卷相同。需要新建试卷时，请修改为新的唯一试卷 ID。</p>
+              <h3>教师批量添加学生时看不到某些学生</h3>
+              <p>普通教师只能看到绑定到自己名下的学生。管理员可以在用户管理中创建学生时绑定所属老师，或由管理员直接添加。</p>
+              <h3>线上更新后页面还是旧的</h3>
+              <p>先确认服务器执行了 <code>git pull</code>、<code>npm install --omit=dev</code>、<code>pm2 restart</code>，然后让浏览器强制刷新：Windows 用 <code>Ctrl + F5</code>，macOS 用 <code>Cmd + Shift + R</code>。</p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+  `;
 }
 
 function manageTabButton(id, label, active) {

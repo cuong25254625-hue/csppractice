@@ -985,6 +985,12 @@ button:disabled {
   gap: 10px;
 }
 
+.compact-head-actions {
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 0;
+}
+
 .compact-stats .stat-card {
   min-height: 64px;
   padding: 10px 12px;
@@ -1227,6 +1233,95 @@ button:disabled {
   display: grid;
   gap: 18px;
   align-content: start;
+}
+
+.completed-assignment-list,
+.class-assignment-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.completed-assignment-item,
+.class-assignment-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+
+.completed-assignment-main,
+.class-assignment-main {
+  min-width: 0;
+}
+
+.completed-assignment-title,
+.class-assignment-title {
+  display: block;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.compact-action {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.assignment-score {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  min-width: 86px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--brand);
+  white-space: nowrap;
+}
+
+.assignment-score strong {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.assignment-score small {
+  font-size: 12px;
+  opacity: 0.95;
+}
+
+.assignment-score.excellent {
+  background: #15803d;
+}
+
+.assignment-score.pass {
+  background: #2563eb;
+}
+
+.assignment-score.low {
+  background: #dc2626;
+}
+
+.assignment-score.muted {
+  color: var(--muted);
+  background: #f1f5f9;
+}
+
+.class-detail-block {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.class-detail-block h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
 }
 
 .action-panel {
@@ -2050,6 +2145,17 @@ mjx-container.mjx-explorer-active > mjx-help {
 
   .paper-item .secondary-btn {
     grid-column: 2;
+    width: max-content;
+  }
+
+  .completed-assignment-item,
+  .class-assignment-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .completed-assignment-item .compact-action,
+  .class-assignment-item .compact-action {
+    grid-column: 1 / -1;
     width: max-content;
   }
 

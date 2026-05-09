@@ -2462,6 +2462,7 @@ async function api(req, res) {
     const classes = db.classes.filter((klass) => canAccessClass(user, klass, db)).map((klass) => classPayload(klass, db, user));
     const classIds = new Set(classes.map((klass) => klass.id));
     const visiblePaperIds = new Set(papers.filter((paper) => !isPaperHidden(db, paper)).map((paper) => paper.id));
+    const userAttempts = user.role === "student" ? queryAttempts({ userId: user.id }, 1000) : [];
     return sendJson(res, 200, {
       classes,
       assignments: db.assignments
@@ -2469,7 +2470,12 @@ async function api(req, res) {
         .map((assignment) => ({
           ...assignment,
           paperTitle: papers.find((paper) => paper.id === assignment.paperId)?.title || assignment.title,
-          className: db.classes.find((klass) => klass.id === assignment.classId)?.name || ""
+          className: db.classes.find((klass) => klass.id === assignment.classId)?.name || "",
+          bestObjective: user.role === "student"
+            ? userAttempts
+              .filter((attempt) => attempt.paperId === assignment.paperId && attempt.type === "objective")
+              .sort((a, b) => (b.score || 0) - (a.score || 0))[0] || null
+            : null
         }))
     });
   }

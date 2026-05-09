@@ -196,7 +196,7 @@ function route() {
   else if (hash === "#/dashboard") renderDashboard();
   else if (hash === "#/study") renderStudy();
   else if (hash === "#/classes" || hash.startsWith("#/classes/")) renderClasses();
-  else if (hash === "#/manage") renderManage();
+  else if (hash.startsWith("#/manage")) renderManage();
   else if (hash === "#/guide") renderGuide();
   else renderHome();
   window.setTimeout(() => typesetMath(app), 0);
@@ -763,7 +763,7 @@ async function renderStudy() {
         </div>
         <div class="panel">
           <div class="panel-head"><h2>已完成作业</h2></div>
-          <div class="panel-body"><ul class="mini-list">${completedAssignments.map((item) => `<li><span><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a><div class="muted">${escapeHtml(item.className)} · 得分 ${assignmentScoreText(item)}</div></span><a class="secondary-btn" href="#/paper/${item.paperId}">再次做题</a></li>`).join("") || `<li class="muted">暂无</li>`}</ul>${renderPager(summary.pagination?.completedAssignments, "study-completed")}</div>
+          <div class="panel-body"><ul class="completed-assignment-list">${completedAssignments.map(renderCompletedAssignmentItem).join("") || `<li class="muted">暂无</li>`}</ul>${renderPager(summary.pagination?.completedAssignments, "study-completed")}</div>
         </div>
       </aside>
     </div>
@@ -804,6 +804,38 @@ function formatAnswer(item, value) {
   }
   const index = Number(value);
   return Number.isFinite(index) ? String.fromCharCode(65 + index) : "-";
+}
+
+function assignmentScoreBadge(item) {
+  if (!item.bestObjective) return `<span class="assignment-score muted">未提交</span>`;
+  const { score, fullScore } = item.bestObjective;
+  return `<span class="assignment-score ${scoreLevel(score, fullScore)}"><strong>${score}/${fullScore}</strong><small>${percent(score, fullScore)}%</small></span>`;
+}
+
+function renderCompletedAssignmentItem(item) {
+  return `
+    <li class="completed-assignment-item">
+      <div class="completed-assignment-main">
+        <a class="completed-assignment-title" href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a>
+        <div class="muted">${escapeHtml(item.className)} · ${assignmentTimeText(item)}</div>
+      </div>
+      ${assignmentScoreBadge(item)}
+      <a class="secondary-btn compact-action" href="#/paper/${item.paperId}">再次做题</a>
+    </li>
+  `;
+}
+
+function renderClassAssignmentItem(item) {
+  return `
+    <li class="class-assignment-item">
+      <div class="class-assignment-main">
+        <a class="class-assignment-title" href="#/paper/${item.paperId}">${escapeHtml(item.paperTitle || item.title)}</a>
+        <div class="meta"><span>${assignmentTimeText(item)}</span>${item.bestObjective ? `<span>已答 ${assignmentScoreText(item)}</span>` : `<span>未答题</span>`}</div>
+      </div>
+      ${assignmentScoreBadge(item)}
+      <a class="primary-btn compact-action" href="#/paper/${item.paperId}">${item.bestObjective ? "再次做题" : "去完成"}</a>
+    </li>
+  `;
 }
 
 function renderDashboard() {
@@ -873,17 +905,18 @@ async function renderClasses() {
   app.innerHTML = `
     <div class="grid">
       <section class="panel">
-        <div class="panel-head"><h1>我的班级</h1><span class="muted">${state.classes.length} 个班级</span></div>
+        <div class="panel-head"><h1>${selectedClass ? escapeHtml(selectedClass.name) : "我的班级"}</h1><span class="muted">${selectedClass ? `${classAssignments.length} 个作业` : `${state.classes.length} 个班级`}</span></div>
         <div class="panel-body">
           <div class="form-grid"><input id="joinCode" placeholder="输入教师给的邀请码"><button class="primary-btn" type="button" id="joinClass">加入班级</button></div>
           <ul class="paper-list" style="margin-top: 14px;">${state.classes.map((klass) => `<li class="paper-item ${selectedClass?.id === klass.id ? "active" : ""}"><span class="paper-icon">${examTypeById(klass.category).levelEnabled ? `${klass.level}级` : "初赛"}</span><div><h3><a href="#/classes/${encodeURIComponent(klass.id)}">${escapeHtml(klass.name)}</a></h3><div class="meta"><span>${escapeHtml(klass.categoryName || categoryName(klass.category))}</span><span>教师 ${escapeHtml(klass.teacherName)}</span><span>学生 ${klass.studentCount}</span><span>作业 ${klass.assignmentCount}</span></div></div><a class="secondary-btn" href="#/classes/${encodeURIComponent(klass.id)}">查看作业</a></li>`).join("") || `<li class="empty">还没有加入班级</li>`}</ul>
+          ${selectedClass ? `<div class="class-detail-block"><h2>${escapeHtml(selectedClass.name)}作业列表</h2><ul class="class-assignment-list">${classAssignments.map(renderClassAssignmentItem).join("") || `<li class="muted">这个班级还没有发布作业</li>`}</ul></div>` : ""}
         </div>
       </section>
       <aside class="side-stack">
         <div class="panel">
           <div class="panel-head"><h2>${selectedClass ? `${escapeHtml(selectedClass.name)}作业` : "班级作业"}</h2><span class="muted">${classAssignments.length} 项</span></div>
           <div class="panel-body">
-            ${selectedClass ? `<ul class="mini-list">${classAssignments.map((item) => `<li><span><a href="#/paper/${item.paperId}">${escapeHtml(item.paperTitle || item.title)}</a><div class="muted">${assignmentTimeText(item)}</div></span><a class="primary-btn" href="#/paper/${item.paperId}">去完成</a></li>`).join("") || `<li class="muted">这个班级还没有发布作业</li>`}</ul>` : `<p class="muted">选择一个班级后查看作业。</p>`}
+            ${selectedClass ? `<ul class="mini-list">${classAssignments.slice(0, 5).map((item) => `<li><span><a href="#/paper/${item.paperId}">${escapeHtml(item.paperTitle || item.title)}</a><div class="muted">${assignmentTimeText(item)}</div></span>${assignmentScoreBadge(item)}</li>`).join("") || `<li class="muted">这个班级还没有发布作业</li>`}</ul>` : `<p class="muted">选择一个班级后查看作业。</p>`}
           </div>
         </div>
       </aside>
@@ -908,6 +941,9 @@ async function renderManage() {
     app.innerHTML = `<div class="panel empty">这里需要教师或管理员权限。</div>`;
     return;
   }
+  const routeClassId = (location.hash || "").startsWith("#/manage/classes/")
+    ? decodeURIComponent((location.hash || "").replace("#/manage/classes/", ""))
+    : "";
   try {
     const overviewParams = new URLSearchParams({
       attemptsPage: String(state.manage.overviewAttemptsPage || 1)
@@ -931,6 +967,18 @@ async function renderManage() {
     state.manage.usersPagination = users.pagination?.users || null;
     state.manage.students = studentData.students || [];
     state.manage.studentsPagination = studentData.pagination?.students || null;
+    if (routeClassId) {
+      state.manage.tab = "classes";
+      if (state.manage.classReport?.class?.id !== routeClassId) {
+        state.manage.classReportPages = { studentsPage: 1, attemptsPage: 1 };
+      }
+      const pages = state.manage.classReportPages || { studentsPage: 1, attemptsPage: 1 };
+      const params = new URLSearchParams({
+        studentsPage: String(pages.studentsPage || 1),
+        attemptsPage: String(pages.attemptsPage || 1)
+      });
+      state.manage.classReport = await api(`/api/classes/${encodeURIComponent(routeClassId)}/report?${params.toString()}`);
+    }
   } catch (error) {
     notify(error.message);
   }
@@ -955,6 +1003,9 @@ async function renderManage() {
     </section>
   `;
   document.querySelectorAll("[data-manage-tab]").forEach((button) => button.addEventListener("click", () => {
+    if (button.dataset.manageTab !== "classes" && (location.hash || "").startsWith("#/manage/classes/")) {
+      history.replaceState(null, "", "#/manage");
+    }
     state.manage.tab = button.dataset.manageTab;
     renderManage();
   }));
@@ -1420,7 +1471,7 @@ function renderClassManageCard(klass) {
       </div>
       <div class="class-card-actions">
         <span class="muted">${klass.studentCount} 名学生 · ${klass.assignmentCount} 个作业</span>
-        <button class="primary-btn" type="button" data-class-report="${klass.id}">查看学情</button>
+        <a class="primary-btn" href="#/manage/classes/${encodeURIComponent(klass.id)}">进入学情</a>
       </div>
     </article>
   `;
@@ -2066,7 +2117,7 @@ function renderClassReport() {
     <div class="panel class-report-card">
       <div class="panel-head">
         <h2>${escapeHtml(klass.name)}</h2>
-        <span class="muted">${escapeHtml(klass.categoryName || categoryName(klass.category))}${klass.level ? ` · ${klass.level} 级` : ""}</span>
+        <div class="submit-row compact-head-actions"><span class="muted">${escapeHtml(klass.categoryName || categoryName(klass.category))}${klass.level ? ` · ${klass.level} 级` : ""}</span><a class="secondary-btn compact-action" href="#/classes/${encodeURIComponent(klass.id)}">查看班级作业</a></div>
       </div>
       <div class="panel-body">
         <div class="stat-grid compact-stats">

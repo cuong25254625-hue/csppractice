@@ -667,6 +667,7 @@ function replaceCoreTables(db) {
     store.prepare("DELETE FROM enrollments").run();
     store.prepare("DELETE FROM assignments").run();
     store.prepare("DELETE FROM audit_logs").run();
+    store.prepare("DELETE FROM exam_sessions").run();
 
     const insertUser = store.prepare(`
       INSERT INTO users (id, username, role, status, teacherId, createdAt, sortOrder, payloadJson)

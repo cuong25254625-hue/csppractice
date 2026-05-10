@@ -3073,6 +3073,24 @@ async function api(req, res) {
     return sendJson(res, 201, { assignment });
   }
 
+  const assignmentDelete = url.pathname.match(/^\/api\/classes\/([^/]+)\/assignments\/([^/]+)$/);
+  if (req.method === "DELETE" && assignmentDelete) {
+    const user = requireTeacher(req, res, db);
+    if (!user) return;
+    const classId = decodeURIComponent(assignmentDelete[1]);
+    const assignmentId = decodeURIComponent(assignmentDelete[2]);
+    const klass = db.classes.find((item) => item.id === classId);
+    if (!klass || isArchived(klass) || (!isAdmin(user) && klass.teacherId !== user.id)) {
+      return sendJson(res, 404, { message: "班级不存在或无权限。" });
+    }
+    const index = db.assignments.findIndex((item) => item.id === assignmentId && item.classId === classId);
+    if (index < 0) return sendJson(res, 404, { message: "作业不存在。" });
+    db.assignments.splice(index, 1);
+    audit(db, user, "assignment:delete", assignmentId);
+    saveDb(db);
+    return sendJson(res, 200, { ok: true });
+  }
+
   const classReport = url.pathname.match(/^\/api\/classes\/([^/]+)\/report$/);
   if (req.method === "GET" && classReport) {
     const user = requireTeacher(req, res, db);

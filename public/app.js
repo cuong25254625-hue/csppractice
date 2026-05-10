@@ -198,14 +198,34 @@ function setActiveNav(hash) {
   document.querySelector(`[data-link="${name}"]`)?.classList.add("active");
 }
 
+let lastHash = location.hash || "#/";
 function route() {
   const hash = location.hash || "#/";
+  // Intercept navigation away from active exam
+  if (!hash.startsWith("#/paper/") && lastHash.startsWith("#/paper/") && state.examActive) {
+    if (confirm("考试进行中，离开页面将自动提交试卷。确定要离开吗？")) {
+      // User confirmed — submit and allow navigation
+      const paperId = state.currentPaperId;
+      if (paperId) doSubmitObjective(paperId, { silent: true });
+      stopExamTimers();
+    } else {
+      // User cancelled — restore hash and stay
+      history.replaceState(null, "", lastHash);
+      lastHash = hash; // prevent re-trigger on next hashchange
+      return;
+    }
+  }
+  lastHash = hash;
   if (!hash.startsWith("#/paper/")) {
     stopPaperDraftAutoSave();
-    stopExamTimers();
+    if (!state.examActive) stopExamTimers();
   }
   setActiveNav(hash);
-  if (hash.startsWith("#/paper/")) renderPaper(decodeURIComponent(hash.replace("#/paper/", "")));
+  if (hash.startsWith("#/paper/")) {
+    const paperPart = hash.replace("#/paper/", "");
+    const paperId = decodeURIComponent(paperPart.split("?")[0]);
+    renderPaper(paperId);
+  }
   else if (hash === "#/dashboard") renderDashboard();
   else if (hash === "#/study") renderStudy();
   else if (hash === "#/workbench") renderTeacherWorkbench();
@@ -421,6 +441,8 @@ async function renderPaper(paperId) {
     return;
   }
 
+  state.currentPaperId = paperId;
+
   // Parse assignment ID from URL hash
   const hashParams = new URLSearchParams((location.hash || "").split("?")[1] || "");
   const assignmentId = hashParams.get("assignmentId") || "";
@@ -499,7 +521,6 @@ async function renderPaper(paperId) {
           </div>
           <div class="submit-row">
             <button class="primary-btn" type="button" id="submitObjective" ${objectiveQuestions.length ? "" : "disabled"}>提交</button>
-            <button class="secondary-btn" type="button" id="clearDraft">清除草稿</button>
           </div>
           <div class="muted draft-status" id="draftStatus">答题草稿会自动保存在本机浏览器。</div>
           <div class="score-box" id="scoreBox">
@@ -522,7 +543,10 @@ async function renderPaper(paperId) {
       if (state.examTimerId) { clearInterval(state.examTimerId); state.examTimerId = null; }
       if (state.examHeartbeatId) { clearInterval(state.examHeartbeatId); state.examHeartbeatId = null; }
       state.examSession = null;
+      state.examActive = false;
     }
+
+    state.examActive = true;
 
     const heartbeat = async () => {
       try {
@@ -562,12 +586,6 @@ async function renderPaper(paperId) {
     element.addEventListener("change", () => schedulePaperDraftSave(paper.id));
   });
   document.querySelector("#submitObjective")?.addEventListener("click", () => submitObjective(paper.id));
-  document.querySelector("#clearDraft")?.addEventListener("click", () => {
-    clearPaperDraft(paper.id, "草稿已清除。");
-    document.querySelectorAll("[data-objective-id] input").forEach((input) => { input.checked = false; });
-    document.querySelectorAll(".code-editor[id^='code-']").forEach((editor) => { editor.value = defaultCode(); });
-    updateAnswerCard();
-  });
   document.querySelectorAll("[data-run-code]").forEach((button) => button.addEventListener("click", () => submitCode(paper.id, button.dataset.runCode)));
   document.querySelectorAll("[data-jump-question]").forEach((link) => link.addEventListener("click", jumpToQuestion));
   updateAnswerCard();
@@ -831,7 +849,9 @@ async function submitObjective(paperId) {
   submitConfirmDialog.showModal();
 }
 
-async function doSubmitObjective(paperId) {
+async function doSubmitObjective(paperId, options = {}) {
+  const { silent } = options;
+  stopExamTimers();
   const answers = {};
   document.querySelectorAll("[data-objective-id]").forEach((item) => {
     const value = answerValues(item.dataset.objectiveId, item.dataset.objectiveType);
@@ -842,9 +862,14 @@ async function doSubmitObjective(paperId) {
   try {
     const data = await api("/api/submit-objective", { method: "POST", body: { paperId, answers } });
     state.attempts.unshift(data.attempt);
+    if (silent) {
+      clearPaperDraft(paperId);
+      return;
+    }
     const correctCount = data.details.filter((item) => item.correct).length;
     const wrongCount = data.details.length - correctCount;
-    document.querySelector("#scoreBox").innerHTML = `
+    const scoreEl = document.querySelector("#scoreBox");
+    if (scoreEl) scoreEl.innerHTML = `
       <div class="score-summary ${scoreLevel(data.score, data.fullScore)}">
         <div>
           <span>成绩</span>
@@ -863,7 +888,7 @@ async function doSubmitObjective(paperId) {
     clearPaperDraft(paperId);
     notify("提交完成。");
   } catch (error) {
-    notify(error.message);
+    if (!silent) notify(error.message);
   }
 }
 
@@ -1271,6 +1296,10 @@ async function renderManage(options = {}) {
     state.manage.tab = button.dataset.manageTab;
     renderManage({ skipFetch: true });
   }));
+  document.querySelectorAll("[data-settings-sub-tab]").forEach((button) => button.addEventListener("click", () => {
+    state.manage.settingsTab = button.dataset.settingsSubTab;
+    renderManage({ skipFetch: true });
+  }));
   document.querySelector("#backPaperList")?.addEventListener("click", showPaperList);
   document.querySelector("#newPaper")?.addEventListener("click", createNewPaper);
   document.querySelectorAll("[data-paper-editor-action='save']").forEach((button) => button.addEventListener("click", savePaperFromEditor));
@@ -1354,6 +1383,7 @@ async function renderManage(options = {}) {
     renderManage();
   }));
   document.querySelector("#createAssignment")?.addEventListener("click", createAssignment);
+  document.querySelectorAll("[data-delete-assignment]").forEach((button) => button.addEventListener("click", () => deleteAssignment(button.dataset.deleteAssignment)));
   document.querySelector("#addSelectedStudents")?.addEventListener("click", () => addStudentsToActiveClass(false));
   document.querySelector("#addAllStudents")?.addEventListener("click", () => addStudentsToActiveClass(true));
   document.querySelector("#createUser")?.addEventListener("click", createUser);
@@ -1413,11 +1443,11 @@ function renderGuide() {
             <div class="panel-body">
               <ol class="guide-steps">
                 <li><strong>管理员登录。</strong>使用管理员账号进入管理后台，先确认考试类型、教师账号和学生账号是否准备好。</li>
-                <li><strong>创建或导入试卷。</strong>可以在“试卷题库”里手动建卷，也可以先导出 Word 模板，线下编辑后再导入。</li>
-                <li><strong>创建班级。</strong>在“班级管理”中创建班级，选择考试类型和等级。</li>
+                <li><strong>创建或导入试卷。</strong>可以在"试卷题库"里手动建卷，也可以先导出 Word 模板，线下编辑后再导入。</li>
+                <li><strong>创建班级。</strong>在"班级管理"中创建班级，选择考试类型和等级。</li>
                 <li><strong>添加学生。</strong>学生可以用邀请码加入，也可以由教师或管理员进入班级后批量添加。</li>
-                <li><strong>发布作业。</strong>在班级页右侧“发布作业”选择班级、试卷和截止日期。</li>
-                <li><strong>查看班级。</strong>点击班级的“进入班级”，查看学生练习次数、最好成绩、作业和最近答题。</li>
+                <li><strong>发布作业。</strong>在班级页右侧"发布作业"选择班级、试卷和截止日期。</li>
+                <li><strong>查看班级。</strong>点击班级的"进入班级"，查看学生练习次数、最好成绩、作业和最近答题。</li>
               </ol>
               <p class="guide-note">建议先用一个测试班级完整走一遍流程，确认试卷、作业和学生账号都正常后，再正式给学生使用。</p>
             </div>
@@ -1433,7 +1463,7 @@ function renderGuide() {
               <h3>学生</h3>
               <p>学生可以浏览未隐藏试卷、参加练习、查看记录、加入班级、查看班级作业和修改自己的密码。学生端不会显示班级邀请码。</p>
               <h3>修改密码</h3>
-              <p>登录后点击右上角账号菜单里的“修改密码”，输入当前密码和新密码即可。管理员不需要知道学生当前密码，也建议不要长期共用默认密码。</p>
+              <p>登录后点击右上角账号菜单里的"修改密码"，输入当前密码和新密码即可。管理员不需要知道学生当前密码，也建议不要长期共用默认密码。</p>
             </div>
           </section>
 
@@ -1452,16 +1482,16 @@ function renderGuide() {
               <ul>
                 <li><strong>单选题：</strong>设置 4 个或更多选项，答案为一个选项。</li>
                 <li><strong>多选题：</strong>可设置多个正确选项，学生必须选中完整答案才得分。</li>
-                <li><strong>判断题：</strong>答案为“正确”或“错误”，未作答会按 0 分处理。</li>
+                <li><strong>判断题：</strong>答案为"正确"或"错误"，未作答会按 0 分处理。</li>
                 <li><strong>阅读程序题 / 完善程序题：</strong>属于复合题，先填写题面和代码，再添加判断、单选或多选子题。</li>
                 <li><strong>编程题：</strong>当前默认关闭提交入口，待运行沙箱配置完成后再开放。</li>
               </ul>
               <h3>编辑建议</h3>
               <ul>
                 <li>题目 ID 在同一套试卷内应保持唯一，方便错题本、提交记录和后续更新定位。</li>
-                <li>分值可以在建卷页面用“批量修改分值”工具统一设置。</li>
+                <li>分值可以在建卷页面用"批量修改分值"工具统一设置。</li>
                 <li>题干、选项和解析支持 Markdown，可插入代码块、图片链接和数学公式。</li>
-                <li>试卷暂时不想给学生看到时，使用“隐藏”功能，不要直接删除。</li>
+                <li>试卷暂时不想给学生看到时，使用"隐藏"功能，不要直接删除。</li>
               </ul>
             </div>
           </section>
@@ -1471,23 +1501,23 @@ function renderGuide() {
             <div class="panel-body">
               <h3>导出 Word</h3>
               <ol class="guide-steps">
-                <li>进入“管理台 - 试卷题库”。</li>
-                <li>勾选需要导出的试卷，点击“导出选中 Word”；也可以先按考试类型或名称筛选，再点击“导出筛选结果”。</li>
+                <li>进入"管理台 - 试卷题库"。</li>
+                <li>勾选需要导出的试卷，点击"导出选中 Word"；也可以先按考试类型或名称筛选，再点击"导出筛选结果"。</li>
                 <li>系统会下载 <code>.docx</code> 文件，教师可以在 Word 或 WPS 中编辑。</li>
               </ol>
               <h3>导入 Word</h3>
               <ol class="guide-steps">
                 <li>建议先导出一份系统 Word 模板，再在模板基础上复制和改题。</li>
-                <li>保留关键标签，例如“试卷ID:”“标题:”“题型:”“题目ID:”“题干:”“选项:”“答案:”“解析:”。</li>
-                <li>回到“试卷题库”，点击“导入 Word”，选择编辑后的 <code>.docx</code> 文件。</li>
+                <li>保留关键标签，例如"试卷ID:""标题:""题型:""题目ID:""题干:""选项:""答案:""解析:"。</li>
+                <li>回到"试卷题库"，点击"导入 Word"，选择编辑后的 <code>.docx</code> 文件。</li>
                 <li>导入时，同 ID 试卷会更新；不存在的 ID 会新建。</li>
               </ol>
               <h3>Word 编写规则</h3>
               <ul>
-                <li>每套试卷必须有“试卷ID”和“标题”。</li>
-                <li>每道题用“--- 题目 1 ---”这类分隔行开始，后面填写题型、题目 ID、分值等信息。</li>
+                <li>每套试卷必须有"试卷ID"和"标题"。</li>
+                <li>每道题用"--- 题目 1 ---"这类分隔行开始，后面填写题型、题目 ID、分值等信息。</li>
                 <li>单选和多选的选项建议写成 <code>A. 内容</code>、<code>B. 内容</code>、<code>C. 内容</code>、<code>D. 内容</code>。</li>
-                <li>单选答案可写 <code>A</code> 或 <code>1</code>；多选答案可写 <code>A, C</code>；判断题答案写“正确”或“错误”。</li>
+                <li>单选答案可写 <code>A</code> 或 <code>1</code>；多选答案可写 <code>A, C</code>；判断题答案写"正确"或"错误"。</li>
                 <li>如果导入失败，通常是关键标签被删除或试卷 ID/标题为空。可以重新导出模板，对照格式修改。</li>
               </ul>
             </div>
@@ -1497,20 +1527,20 @@ function renderGuide() {
             <div class="panel-head"><h2>班级与作业</h2></div>
             <div class="panel-body">
               <h3>创建班级</h3>
-              <p>进入“班级管理”，填写班级名称，选择考试类型和等级后点击“创建班级”。每个班级会自动生成邀请码，邀请码仅教师和管理员可见。</p>
+              <p>进入"班级管理"，填写班级名称，选择考试类型和等级后点击"创建班级"。每个班级会自动生成邀请码，邀请码仅教师和管理员可见。</p>
               <h3>学生加入班级</h3>
               <ul>
-                <li><strong>学生自行加入：</strong>教师把邀请码发给学生，学生进入“班级”页面输入邀请码。</li>
-                <li><strong>教师批量添加：</strong>进入某个班级，在“添加学生到班级”中勾选学生或点击“添加全部可选学生”。</li>
+                <li><strong>学生自行加入：</strong>教师把邀请码发给学生，学生进入"班级"页面输入邀请码。</li>
+                <li><strong>教师批量添加：</strong>进入某个班级，在"添加学生到班级"中勾选学生或点击"添加全部可选学生"。</li>
               </ul>
               <h3>发布作业</h3>
               <ol class="guide-steps">
-                <li>在“班级管理”进入某个班级后，找到“发布作业”。</li>
+                <li>在"班级管理"进入某个班级后，找到"发布作业"。</li>
                 <li>选择班级和试卷，按需要设置截止日期。</li>
-                <li>点击“发布作业”。学生进入该班级后即可看到该班级作业。</li>
+                <li>点击"发布作业"。学生进入该班级后即可看到该班级作业。</li>
               </ol>
               <h3>查看班级</h3>
-              <p>点击班级列表中的“进入班级”，可以看到学生数量、作业数量、答题次数、学生练习数据、已发布作业和最近答题记录。</p>
+              <p>点击班级列表中的"进入班级"，可以看到学生数量、作业数量、答题次数、学生练习数据、已发布作业和最近答题记录。</p>
             </div>
           </section>
 
@@ -1518,12 +1548,12 @@ function renderGuide() {
             <div class="panel-head"><h2>学生管理</h2></div>
             <div class="panel-body">
               <h3>单个创建学生</h3>
-              <p>管理员进入“系统设置 - 用户管理”，填写账号、初始密码，角色选择“学生”。如果需要让某位教师管理该学生，请选择“所属老师”。</p>
+              <p>管理员进入"系统设置 - 用户管理"，填写账号、初始密码，角色选择"学生"。如果需要让某位教师管理该学生，请选择"所属老师"。</p>
               <h3>批量导入学生</h3>
-              <p>Excel 第一行表头包含“用户名”和“密码”即可，也支持 <code>username</code> / <code>password</code>。导入前可以选择创建为学生账号或教师账号；创建学生账号时可以统一绑定所属老师。</p>
+              <p>Excel 第一行表头包含"用户名"和"密码"即可，也支持 <code>username</code> / <code>password</code>。导入前可以选择创建为学生账号或教师账号；创建学生账号时可以统一绑定所属老师。</p>
               <h3>所属老师的作用</h3>
               <ul>
-                <li>教师在“添加学生到班级”时，只能看到自己名下学生。</li>
+                <li>教师在"添加学生到班级"时，只能看到自己名下学生。</li>
                 <li>管理员可以看到全部学生，不受所属老师限制。</li>
                 <li>如果学生没有绑定老师，管理员仍可管理，普通教师不会在批量添加列表中看到该学生。</li>
               </ul>
@@ -1536,7 +1566,7 @@ function renderGuide() {
               <ul>
                 <li><strong>试卷：</strong>学生首页显示所有未隐藏试卷，可按考试类型、等级和关键词筛选。</li>
                 <li><strong>提交：</strong>客观题提交前会弹出确认框，未作答题目会提示并按 0 分处理。</li>
-                <li><strong>记录：</strong>“记录”页面显示学生历史练习提交。</li>
+                <li><strong>记录：</strong>"记录"页面显示学生历史练习提交。</li>
                 <li><strong>学习中心：</strong>汇总待完成作业、练习进度和错题。</li>
                 <li><strong>班级：</strong>学生先点击进入某个班级，再查看该班级发布的试卷作业。</li>
                 <li><strong>改密码：</strong>右上角账号菜单可修改自己的登录密码。</li>
@@ -1556,7 +1586,7 @@ function renderGuide() {
                 <li><strong>.env：</strong>如果服务器上配置过环境变量，也建议备份。</li>
               </ul>
               <h3>后台备份与恢复</h3>
-              <p>管理员可在“系统设置 - 数据备份”中一键备份，也可以查看备份列表并恢复到某个备份。恢复前系统会自动创建一份当前数据的安全备份。</p>
+              <p>管理员可在"系统设置 - 数据备份"中一键备份，也可以查看备份列表并恢复到某个备份。恢复前系统会自动创建一份当前数据的安全备份。</p>
               <h3>备份命令示例</h3>
               <pre class="code-block"><code><span class="code-line">BACKUP=~/csppractice-backup-$(date +%Y%m%d-%H%M%S)</span><span class="code-line">mkdir -p "$BACKUP"</span><span class="code-line">cp data/papers.json "$BACKUP/"</span><span class="code-line">cp data/runtime.sqlite "$BACKUP/" 2>/dev/null || true</span><span class="code-line">cp .env "$BACKUP/" 2>/dev/null || true</span></code></pre>
             </div>
@@ -1568,7 +1598,7 @@ function renderGuide() {
               <h3>学生看不到试卷</h3>
               <p>检查试卷是否被隐藏；如果是班级作业，还要确认作业是否发布到学生所在班级。</p>
               <h3>Word 导入后变成更新原试卷</h3>
-              <p>这是因为 Word 中的“试卷ID”与已有试卷相同。需要新建试卷时，请修改为新的唯一试卷 ID。</p>
+              <p>这是因为 Word 中的"试卷ID"与已有试卷相同。需要新建试卷时，请修改为新的唯一试卷 ID。</p>
               <h3>教师批量添加学生时看不到某些学生</h3>
               <p>普通教师只能看到绑定到自己名下的学生。管理员可以在用户管理中创建学生时绑定所属老师，或由管理员直接添加。</p>
               <h3>线上更新后页面还是旧的</h3>
@@ -1857,7 +1887,7 @@ function renderClassAssignmentsTab(report, classes) {
       <div class="panel" style="margin-top: 18px;">
         <div class="panel-head"><h2>已发布作业</h2><span class="muted">${assignments.length} 个</span></div>
         <div class="panel-body">
-          <ul class="paper-list">${assignments.map((item) => `<li class="paper-item"><span class="paper-icon">作业</span><div><h3><a href="#/paper/${item.paperId}">${escapeHtml(item.paperTitle || item.title)}</a></h3><div class="meta"><span>${assignmentTimeText(item)}</span></div></div><a class="primary-btn compact-action" href="#/paper/${item.paperId}">查看试卷</a></li>`).join("") || `<li class="empty">暂无作业</li>`}</ul>
+          <ul class="paper-list">${assignments.map((item) => `<li class="paper-item"><span class="paper-icon">作业</span><div><h3><a href="#/paper/${item.paperId}">${escapeHtml(item.paperTitle || item.title)}</a></h3><div class="meta"><span>${assignmentTimeText(item)}</span></div></div><div class="paper-item-actions"><a class="primary-btn compact-action" href="#/paper/${item.paperId}">查看试卷</a><button class="danger-btn compact-action" type="button" data-delete-assignment="${item.id}">移除</button></div></li>`).join("") || `<li class="empty">暂无作业</li>`}</ul>
         </div>
       </div>
     </div>`;
@@ -1953,14 +1983,21 @@ function renderManageSettingsSection() {
   if (!isAdmin()) {
     return `<div class="settings-shell"><div class="panel"><div class="panel-head"><h2>考试类型</h2></div><div class="panel-body"><p class="muted">考试类型由管理员维护。</p></div></div></div>`;
   }
+  const activeSubTab = state.manage.settingsTab || "users";
   return `
     <div class="settings-shell">
-      ${renderUserAdmin()}
-      <div class="settings-top-grid">
-        ${renderRegistrationAdmin()}
-        ${renderBackupAdmin()}
-        ${renderExamTypeAdmin()}
-        ${renderArchiveAdmin()}
+      <div class="settings-sub-tabs" role="tablist">
+        <button class="settings-sub-tab-btn ${activeSubTab === "users" ? "active" : ""}" type="button" data-settings-sub-tab="users">用户管理</button>
+        <button class="settings-sub-tab-btn ${activeSubTab === "config" ? "active" : ""}" type="button" data-settings-sub-tab="config">系统配置</button>
+      </div>
+      <div class="settings-sub-panel" ${activeSubTab === "users" ? "" : "hidden"}>${renderUserAdmin()}</div>
+      <div class="settings-sub-panel" ${activeSubTab === "config" ? "" : "hidden"}>
+        <div class="settings-top-grid">
+          ${renderRegistrationAdmin()}
+          ${renderBackupAdmin()}
+          ${renderExamTypeAdmin()}
+          ${renderArchiveAdmin()}
+        </div>
       </div>
     </div>
   `;
@@ -2022,6 +2059,7 @@ function stopExamTimers() {
   if (state.examTimerId) { clearInterval(state.examTimerId); state.examTimerId = null; }
   if (state.examHeartbeatId) { clearInterval(state.examHeartbeatId); state.examHeartbeatId = null; }
   state.examSession = null;
+  state.examActive = false;
 }
 
 function formatExamTime(seconds) {
@@ -2866,6 +2904,19 @@ async function createAssignment() {
   }
 }
 
+async function deleteAssignment(assignmentId) {
+  const classId = state.manage.classReport?.class?.id;
+  if (!classId) return notify("请先进入一个班级。");
+  if (!confirm("确定要移除这个作业吗？移除后学生的答题记录仍会保留。")) return;
+  try {
+    await api(`/api/classes/${encodeURIComponent(classId)}/assignments/${encodeURIComponent(assignmentId)}`, { method: "DELETE" });
+    notify("作业已移除。");
+    await loadClassReport(classId, { silent: true });
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
 async function addStudentsToActiveClass(all) {
   const classId = state.manage.classReport?.class?.id;
   if (!classId) return notify("请先进入一个班级。");
@@ -2912,7 +2963,7 @@ function renderUserAdmin() {
               <input id="bulkUserFile" type="file" accept=".xlsx,.xls,.csv">
               <button class="primary-btn" type="button" id="importUsers">上传并创建</button>
             </div>
-            <p class="muted import-hint">Excel 第一行表头包含“用户名”和“密码”即可；也支持 username/password。</p>
+            <p class="muted import-hint">Excel 第一行表头包含"用户名"和"密码"即可；也支持 username/password。</p>
             ${renderImportResult()}
           </section>
           <section class="settings-block">
@@ -2923,21 +2974,18 @@ function renderUserAdmin() {
               <button class="primary-btn" type="button" id="bindStudentTeacher" ${students.length ? "" : "disabled"}>保存绑定</button>
             </div>
           </section>
-          <section class="settings-block">
-            <h3 class="subhead">批量维护</h3>
-            <div class="stack-form">
-              <input id="bulkResetPassword" type="password" placeholder="给勾选账号设置新密码">
-              <button class="danger-btn" type="button" id="resetSelectedPasswords">批量重置密码</button>
-              <select id="exportTeacherId">${teacherOptions}</select>
-              <button class="danger-btn" type="button" id="resetTeacherStudents">重置该教师学生密码</button>
-              <button class="secondary-btn" type="button" id="exportTeacherStudents">按教师导出学生</button>
+          <section class="settings-block user-list-block">
+            <h3 class="subhead">账号列表 <span class="muted">勾选后可批量操作</span></h3>
+            <div class="user-list-toolbar">
+              <input id="bulkResetPassword" type="password" placeholder="新密码" class="compact-input">
+              <button class="danger-btn compact-action" type="button" id="resetSelectedPasswords">批量重置密码</button>
+              <select id="exportTeacherId" class="compact-select">${teacherOptions}</select>
+              <button class="danger-btn compact-action" type="button" id="resetTeacherStudents">重置该教师学生密码</button>
+              <button class="secondary-btn compact-action" type="button" id="exportTeacherStudents">按教师导出学生</button>
             </div>
-          </section>
-          <details class="settings-block user-list-block user-list-dropdown">
-            <summary><span>账号列表</span><span class="muted">分页显示</span></summary>
             <ul class="mini-list user-admin-list">${state.manage.users.map((user) => `<li><label class="inline-check"><input type="checkbox" data-user-select="${user.id}"><span>${escapeHtml(user.username)}<div class="muted">${roleName(user.role)}${user.teacherName ? ` · ${escapeHtml(user.teacherName)}` : ""}</div></span></label><span class="muted">${user.attemptCount} 次</span></li>`).join("")}</ul>
             ${renderPager(state.manage.usersPagination, "manage-users")}
-          </details>
+          </section>
         </div>
       </div>
     </div>
@@ -3302,9 +3350,28 @@ confirmSubmitBtn.addEventListener("click", () => {
 cancelSubmitBtn.addEventListener("click", () => submitConfirmDialog.close());
 closeSubmitConfirm.addEventListener("click", () => submitConfirmDialog.close());
 window.addEventListener("hashchange", route);
-window.addEventListener("beforeunload", () => {
+window.addEventListener("beforeunload", (event) => {
   if (activeDraftPaperId) savePaperDraft(activeDraftPaperId);
-  stopExamTimers();
+  if (state.examActive && state.examSession) {
+    // Auto-submit exam via sendBeacon on page leave
+    const answers = {};
+    document.querySelectorAll("[data-objective-id]").forEach((item) => {
+      const value = answerValues(item.dataset.objectiveId, item.dataset.objectiveType);
+      if (Array.isArray(value) ? value.length : value !== "") {
+        answers[item.dataset.objectiveId] = value;
+      }
+    });
+    const paperId = state.currentPaperId;
+    if (paperId && Object.keys(answers).length) {
+      const blob = new Blob([JSON.stringify({ paperId, answers, examSessionId: state.examSession.id })], { type: "application/json" });
+      navigator.sendBeacon("/api/submit-objective", blob);
+    }
+    event.preventDefault();
+    event.returnValue = "考试进行中，离开页面将自动提交试卷。确定要离开吗？";
+    // Don't stop timers here — user might cancel the dialog
+  } else {
+    stopExamTimers();
+  }
 });
 
 init();

@@ -693,6 +693,35 @@ button:disabled {
   color: var(--text);
 }
 
+.settings-sub-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 18px;
+  border-bottom: 2px solid var(--line);
+}
+
+.settings-sub-tab-btn {
+  padding: 10px 24px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.95em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.settings-sub-tab-btn.active {
+  color: #0f766e;
+  border-bottom-color: #0f766e;
+}
+
+.settings-sub-tab-btn:hover:not(.active) {
+  color: var(--text);
+}
+
 .import-progress-bar {
   margin-bottom: 12px;
   padding: 10px 14px;
@@ -1044,6 +1073,33 @@ button:disabled {
   align-items: start;
 }
 
+.user-list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.compact-input {
+  width: 150px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.compact-select {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  max-width: 220px;
+}
+
 .settings-block {
   display: grid;
   gap: 10px;
@@ -1386,6 +1442,13 @@ button:disabled {
 .paper-item h3 {
   margin: 0 0 3px;
   font-size: 17px;
+}
+
+.paper-item-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .meta,

@@ -446,10 +446,21 @@ async function renderPaper(paperId) {
   // Parse assignment ID from URL hash
   const hashParams = new URLSearchParams((location.hash || "").split("?")[1] || "");
   const assignmentId = hashParams.get("assignmentId") || "";
+  const reviewAttemptId = hashParams.get("review") || "";
   let examData = null;
   let examDuration = 0;
+  let reviewData = null;
 
-  if (assignmentId && state.user) {
+  if (reviewAttemptId && state.user) {
+    try {
+      const resp = await api(`/api/attempts/${encodeURIComponent(reviewAttemptId)}`);
+      reviewData = resp.attempt;
+    } catch (e) {
+      // Attempt not found or no permission — continue normally
+    }
+  }
+
+  if (!reviewData && assignmentId && state.user) {
     try {
       const sessionResp = await api(`/api/exam/session?assignmentId=${encodeURIComponent(assignmentId)}`);
       const existingSession = sessionResp.session;
@@ -489,6 +500,12 @@ async function renderPaper(paperId) {
     </div>
   ` : "";
 
+  const isReview = reviewData && reviewData.type === "objective" && reviewData.details;
+  const reviewScore = isReview ? reviewData.score || 0 : 0;
+  const reviewFullScore = isReview ? reviewData.fullScore || 0 : 0;
+  const reviewCorrect = isReview ? reviewData.details.filter((d) => d.correct).length : 0;
+  const reviewWrong = isReview ? reviewData.details.filter((d) => !d.correct).length : 0;
+
   app.innerHTML = `
     <div class="paper-layout">
       <section>
@@ -505,7 +522,7 @@ async function renderPaper(paperId) {
                 <span>编程题 ${stats.program}</span>
               </div>
             </div>
-            <a class="secondary-btn" href="#/">返回列表</a>
+            <a class="secondary-btn" href="javascript:history.back()">返回</a>
           </div>
         </div>
 
@@ -513,12 +530,29 @@ async function renderPaper(paperId) {
       </section>
 
       <aside class="panel answer-card">
-        <div class="panel-head"><h2>答题卡</h2></div>
+        <div class="panel-head"><h2>${isReview ? "答题记录" : "答题卡"}</h2></div>
         <div class="panel-body">
-          ${timerHtml}
+          ${isReview ? "" : timerHtml}
           <div class="answer-grid">
             ${paper.questions.map((question, index) => `<a href="#q-${question.id}" data-card="${question.id}" data-jump-question="${question.id}">${index + 1}</a>`).join("")}
           </div>
+          ${isReview ? `
+          <div class="score-box" id="scoreBox">
+            <div class="score-summary ${scoreLevel(reviewScore, reviewFullScore)}">
+              <div>
+                <span>成绩</span>
+                <strong>${percent(reviewScore, reviewFullScore)}<small>%</small></strong>
+              </div>
+              <p>${reviewScore} / ${reviewFullScore} 分</p>
+            </div>
+            <div class="score-metrics">
+              <span class="status-ok">正确 ${reviewCorrect}</span>
+              <span class="status-bad">错误 ${reviewWrong}</span>
+              <span class="muted">共 ${reviewData.details.length} 题</span>
+            </div>
+            <div class="muted">${escapeHtml(formatDateTime(reviewData.createdAt))} 提交</div>
+          </div>
+          ` : `
           <div class="submit-row">
             <button class="primary-btn" type="button" id="submitObjective" ${objectiveQuestions.length ? "" : "disabled"}>提交</button>
           </div>
@@ -526,10 +560,30 @@ async function renderPaper(paperId) {
           <div class="score-box" id="scoreBox">
             <div class="muted">${state.programSubmissionEnabled ? "单选和判断题自动判分；编程题逐题提交。" : "单选和判断题自动判分；编程题提交暂时关闭。"}</div>
           </div>
+          `}
         </div>
       </aside>
     </div>
   `;
+
+  // Review mode: restore answers and show results
+  if (isReview) {
+    const details = reviewData.details;
+    // Restore user answers into form inputs
+    details.forEach((detail) => {
+      const values = Array.isArray(detail.userAnswer) ? detail.userAnswer.map(String) : [String(detail.userAnswer)];
+      Array.from(document.querySelectorAll(`[data-objective-id] input`)).filter((input) => input.name === detail.id).forEach((input) => {
+        input.checked = values.includes(input.value);
+      });
+    });
+    // Apply correct/wrong markings and show explanations
+    applyObjectiveResult(details);
+    // Disable all inputs
+    document.querySelectorAll("[data-objective-id] input").forEach((input) => { input.disabled = true; });
+    document.querySelectorAll("[data-jump-question]").forEach((link) => link.addEventListener("click", jumpToQuestion));
+    updateAnswerCard();
+    return;
+  }
 
   // Set up exam timer
   if (examData) {
@@ -577,7 +631,8 @@ async function renderPaper(paperId) {
     state.examHeartbeatId = setInterval(heartbeat, 30000);
   }
 
-  const restored = restorePaperDraft(paper.id);
+  // Clear any stale draft so every entry starts fresh
+  clearPaperDraft(paper.id, "");
   startPaperDraftAutoSave(paper.id);
   document.querySelectorAll("input[type='radio'], input[type='checkbox'], textarea").forEach((element) => {
     element.addEventListener("input", updateAnswerCard);
@@ -589,7 +644,6 @@ async function renderPaper(paperId) {
   document.querySelectorAll("[data-run-code]").forEach((button) => button.addEventListener("click", () => submitCode(paper.id, button.dataset.runCode)));
   document.querySelectorAll("[data-jump-question]").forEach((link) => link.addEventListener("click", jumpToQuestion));
   updateAnswerCard();
-  updateDraftStatus(paper.id, restored ? "已恢复上次未提交的草稿。" : "");
 }
 
 function paperDraftKey(paperId) {
@@ -1068,6 +1122,7 @@ function assignmentScoreBadge(item) {
 }
 
 function renderCompletedAssignmentItem(item) {
+  const reviewLink = item.bestObjective?.attemptId ? `<a class="secondary-btn compact-action" href="#/paper/${item.paperId}?review=${item.bestObjective.attemptId}">查看记录</a>` : "";
   return `
     <li class="completed-assignment-item">
       <div class="completed-assignment-left">
@@ -1083,6 +1138,7 @@ function renderCompletedAssignmentItem(item) {
       </div>
       <div class="completed-assignment-right">
         ${assignmentScoreBadge(item)}
+        ${reviewLink}
         <a class="secondary-btn compact-action" href="#/paper/${item.paperId}">再次做题</a>
       </div>
     </li>
@@ -1125,7 +1181,7 @@ function renderDashboard() {
     <div class="grid">
       <section class="panel">
         <div class="panel-head"><h1>练习记录</h1><span class="muted">${escapeHtml(state.user.username)} · ${roleName(state.user.role)}</span></div>
-        ${state.attempts.length ? `<div class="panel-body"><table class="history-table"><thead><tr><th>时间</th><th>试卷</th><th>类型</th><th>结果</th></tr></thead><tbody>${state.attempts.map(renderAttemptRow).join("")}</tbody></table>${renderPager(state.dashboard.attemptsPagination, "dashboard-attempts")}</div>` : `<div class="empty">还没有提交记录</div>`}
+        ${state.attempts.length ? `<div class="panel-body"><table class="history-table"><thead><tr><th>时间</th><th>试卷</th><th>类型</th><th>结果</th><th>操作</th></tr></thead><tbody>${state.attempts.map(renderAttemptRow).join("")}</tbody></table>${renderPager(state.dashboard.attemptsPagination, "dashboard-attempts")}</div>` : `<div class="empty">还没有提交记录</div>`}
       </section>
       <aside class="side-stack"><div class="panel"><div class="panel-head"><h2>学习进度</h2></div><div class="panel-body"><p class="muted">提交次数：${attemptMeta.total}</p><p class="muted">已加入班级：${state.classes.length}</p><a class="secondary-btn" href="#/study">进入学习中心</a></div></div></aside>
     </div>
@@ -1141,7 +1197,8 @@ function renderAttemptRow(attempt) {
   const time = new Date(attempt.createdAt).toLocaleString("zh-CN", { hour12: false });
   const type = attempt.type === "objective" ? "客观题" : "编程题";
   const result = attempt.type === "objective" ? renderScoreBadge(attempt.score, attempt.fullScore) : renderProgramStatus(attempt);
-  return `<tr><td>${escapeHtml(time)}</td><td><a href="#/paper/${attempt.paperId}">${escapeHtml(attempt.paperTitle)}</a>${attempt.questionTitle ? `<div class="muted">${escapeHtml(attempt.questionTitle)}</div>` : ""}</td><td>${type}</td><td>${result}</td></tr>`;
+  const reviewLink = attempt.type === "objective" ? `<a class="secondary-btn compact-action" href="#/paper/${attempt.paperId}?review=${attempt.id}">查看记录</a>` : "";
+  return `<tr><td>${escapeHtml(time)}</td><td><a href="#/paper/${attempt.paperId}">${escapeHtml(attempt.paperTitle)}</a>${attempt.questionTitle ? `<div class="muted">${escapeHtml(attempt.questionTitle)}</div>` : ""}</td><td>${type}</td><td>${result}</td><td>${reviewLink}</td></tr>`;
 }
 
 function renderProgramStatus(attempt) {

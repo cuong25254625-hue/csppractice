@@ -2127,7 +2127,8 @@ function buildStudentSummary(user, db, papers, options = {}) {
         paperTitle: paper?.title || assignment.title,
         className: db.classes.find((item) => item.id === assignment.classId)?.name || "",
         done: objectiveDone && programDone,
-        bestObjective: objective ? { score: objective.score, fullScore: objective.fullScore } : null,
+        bestAttemptId: objective?.id || null,
+        bestObjective: objective ? { score: objective.score, fullScore: objective.fullScore, attemptId: objective.id } : null,
         acceptedPrograms: programs.length,
         programTotal,
         status
@@ -2365,6 +2366,20 @@ async function api(req, res) {
       completedPage: pageOptions(url, "completed", 8, 30),
       wrongPage: pageOptions(url, "wrong", 20, 50)
     }));
+  }
+
+  const attemptDetail = url.pathname.match(/^\/api\/attempts\/([^/]+)$/);
+  if (req.method === "GET" && attemptDetail) {
+    const user = requireUser(req, res, db);
+    if (!user) return;
+    const attemptId = decodeURIComponent(attemptDetail[1]);
+    const rows = getRuntimeStore().prepare("SELECT * FROM attempts WHERE id = ?").all(attemptId);
+    const attempt = rows.map(attemptFromRow)[0];
+    if (!attempt) return sendJson(res, 404, { message: "答题记录不存在。" });
+    if (attempt.userId !== user.id && !isTeacher(user)) {
+      return sendJson(res, 403, { message: "无权查看此答题记录。" });
+    }
+    return sendJson(res, 200, { attempt });
   }
 
   if (req.method === "POST" && url.pathname === "/api/register") {

@@ -2466,7 +2466,8 @@ async function api(req, res) {
     const userAssignments = db.assignments.filter((assignment) => !isArchived(assignment) && paper.id === assignment.paperId && enrolledClassIds.has(assignment.classId) && activeClassIds.has(assignment.classId));
     const hasOpenAssignment = userAssignments.some((assignment) => dateState(assignment.startAt, assignment.endAt) === "open");
     const hasPreviousAttempt = countAttempts({ userId: user.id, paperId: paper.id }) > 0;
-    if (!isTeacher(user) && userAssignments.length && !hasOpenAssignment && !hasPreviousAttempt) {
+    // Exam sessions bypass the date-window check — starting the exam already authorized the student
+    if (!isTeacher(user) && userAssignments.length && !hasOpenAssignment && !hasPreviousAttempt && !examSession) {
       return sendJson(res, 403, { message: "这份作业当前不在可提交时间内。" });
     }
     if (isPaperHidden(db, paper) && !isTeacher(user)) return sendJson(res, 404, { message: "试卷不存在。" });
@@ -2511,9 +2512,14 @@ async function api(req, res) {
     const enrolledClassIds = new Set(db.enrollments.filter((item) => item.userId === user.id).map((item) => item.classId));
     const activeClassIds = new Set(activeOnly(db.classes).map((klass) => klass.id));
     const userAssignments = paper ? db.assignments.filter((assignment) => !isArchived(assignment) && assignment.paperId === paper.id && enrolledClassIds.has(assignment.classId) && activeClassIds.has(assignment.classId)) : [];
+    const examSession = db.examSessions.find((item) =>
+      item.userId === user.id &&
+      item.paperId === paper?.id &&
+      !item.submittedAt
+    );
     const hasOpenAssignment = userAssignments.some((assignment) => dateState(assignment.startAt, assignment.endAt) === "open");
     const hasPreviousAttempt = paper ? countAttempts({ userId: user.id, paperId: paper.id }) > 0 : false;
-    if (!isTeacher(user) && userAssignments.length && !hasOpenAssignment && !hasPreviousAttempt) {
+    if (!isTeacher(user) && userAssignments.length && !hasOpenAssignment && !hasPreviousAttempt && !examSession) {
       return sendJson(res, 403, { message: "这份作业当前不在可提交时间内。" });
     }
     if (isPaperHidden(db, paper) && !isTeacher(user)) return sendJson(res, 404, { message: "试卷不存在。" });

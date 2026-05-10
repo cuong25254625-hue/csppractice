@@ -61,6 +61,13 @@ function writeJson(file, value) {
 
 let runtimeStore = null;
 
+function ensureColumn(store, tableName, columnName, definition) {
+  const columns = store.prepare(`PRAGMA table_info(${tableName})`).all().map((column) => column.name);
+  if (!columns.includes(columnName)) {
+    store.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`).run();
+  }
+}
+
 function getRuntimeStore() {
   if (runtimeStore) return runtimeStore;
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -89,6 +96,7 @@ function getRuntimeStore() {
       status TEXT,
       passed INTEGER,
       total INTEGER,
+      archivedAt TEXT,
       detailsJson TEXT,
       payloadJson TEXT NOT NULL,
       createdAt TEXT NOT NULL
@@ -98,6 +106,11 @@ function getRuntimeStore() {
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_attempts_paper_created ON attempts (paperId, createdAt DESC)").run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_attempts_class_created ON attempts (classId, createdAt DESC)").run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_attempts_user_paper_created ON attempts (userId, paperId, createdAt DESC)").run();
+  ensureColumn(runtimeStore, "attempts", "archivedAt", "TEXT");
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_attempts_created ON attempts (createdAt DESC)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_attempts_paper_class_created ON attempts (paperId, classId, createdAt DESC)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_attempts_question_created ON attempts (questionId, createdAt DESC)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_attempts_archived_created ON attempts (archivedAt, createdAt DESC)").run();
   runtimeStore.prepare(`
     CREATE TABLE IF NOT EXISTS sessions (
       sid TEXT PRIMARY KEY,
@@ -123,6 +136,7 @@ function getRuntimeStore() {
   `).run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_users_username ON users (username)").run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_users_role_teacher ON users (role, teacherId)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_users_created ON users (createdAt DESC)").run();
   runtimeStore.prepare(`
     CREATE TABLE IF NOT EXISTS classes (
       id TEXT PRIMARY KEY,
@@ -138,6 +152,7 @@ function getRuntimeStore() {
   `).run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_classes_teacher ON classes (teacherId)").run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_classes_invite ON classes (inviteCode)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_classes_teacher_created ON classes (teacherId, createdAt DESC)").run();
   runtimeStore.prepare(`
     CREATE TABLE IF NOT EXISTS enrollments (
       id TEXT PRIMARY KEY,
@@ -151,6 +166,7 @@ function getRuntimeStore() {
   `).run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_enrollments_class ON enrollments (classId)").run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_enrollments_user ON enrollments (userId)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_enrollments_class_user ON enrollments (classId, userId)").run();
   runtimeStore.prepare(`
     CREATE TABLE IF NOT EXISTS assignments (
       id TEXT PRIMARY KEY,
@@ -168,6 +184,8 @@ function getRuntimeStore() {
   `).run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_assignments_class ON assignments (classId, createdAt DESC)").run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_assignments_paper ON assignments (paperId)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_assignments_paper_created ON assignments (paperId, createdAt DESC)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_assignments_created ON assignments (createdAt DESC)").run();
   runtimeStore.prepare(`
     CREATE TABLE IF NOT EXISTS audit_logs (
       id TEXT PRIMARY KEY,
@@ -182,6 +200,24 @@ function getRuntimeStore() {
   `).run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs (userId, createdAt DESC)").run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs (createdAt DESC)").run();
+  runtimeStore.prepare(`
+    CREATE TABLE IF NOT EXISTS exam_types (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      levelEnabled INTEGER NOT NULL,
+      builtIn INTEGER NOT NULL,
+      sortOrder INTEGER NOT NULL,
+      payloadJson TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    )
+  `).run();
+  runtimeStore.prepare(`
+    CREATE TABLE IF NOT EXISTS paper_visibility (
+      id TEXT PRIMARY KEY,
+      hidden INTEGER NOT NULL,
+      updatedAt TEXT NOT NULL
+    )
+  `).run();
   return runtimeStore;
 }
 
@@ -197,6 +233,9 @@ function loadRuntimeState() {
     } else {
       replaceCoreTables(normalized);
     }
+    const configState = loadConfigTables();
+    if (configState) Object.assign(normalized, configState);
+    else replaceConfigTables(normalized);
     normalized.attempts = [];
     normalized.sessions = loadSessions();
     return normalized;
@@ -205,6 +244,7 @@ function loadRuntimeState() {
   migrateAttemptsFromState(imported.attempts);
   migrateSessionsFromState(imported.sessions);
   replaceCoreTables(imported);
+  replaceConfigTables(imported);
   imported.attempts = [];
   imported.sessions = loadSessions();
   saveDb(imported);
@@ -243,6 +283,8 @@ function runtimeStateForStorage(db) {
     enrollments: [],
     assignments: [],
     auditLogs: [],
+    examTypes: [],
+    paperVisibility: {},
     attempts: [],
     sessions: {}
   };
@@ -251,6 +293,7 @@ function runtimeStateForStorage(db) {
 function saveRuntimeState(db) {
   const normalized = normalizeDb(db);
   replaceCoreTables(normalized);
+  replaceConfigTables(normalized);
   saveStateValue("db", runtimeStateForStorage(normalized));
 }
 
@@ -540,6 +583,58 @@ function loadCoreTables() {
   };
 }
 
+function loadConfigTables() {
+  const store = getRuntimeStore();
+  const examTypeCount = store.prepare("SELECT COUNT(*) AS count FROM exam_types").get().count || 0;
+  const visibilityCount = store.prepare("SELECT COUNT(*) AS count FROM paper_visibility").get().count || 0;
+  if (!examTypeCount && !visibilityCount) return null;
+  const examTypes = examTypeCount
+    ? store.prepare("SELECT payloadJson FROM exam_types ORDER BY sortOrder ASC, id ASC").all().map(payloadFromRow)
+    : null;
+  const paperVisibility = Object.fromEntries(store
+    .prepare("SELECT id, hidden FROM paper_visibility")
+    .all()
+    .map((row) => [row.id, Boolean(row.hidden)]));
+  return {
+    ...(examTypes ? { examTypes } : {}),
+    paperVisibility
+  };
+}
+
+function replaceConfigTables(db) {
+  const store = getRuntimeStore();
+  const transaction = store.transaction((state) => {
+    store.prepare("DELETE FROM exam_types").run();
+    store.prepare("DELETE FROM paper_visibility").run();
+    const now = new Date().toISOString();
+    const insertExamType = store.prepare(`
+      INSERT INTO exam_types (id, name, levelEnabled, builtIn, sortOrder, payloadJson, updatedAt)
+      VALUES (@id, @name, @levelEnabled, @builtIn, @sortOrder, @payloadJson, @updatedAt)
+    `);
+    const insertVisibility = store.prepare(`
+      INSERT INTO paper_visibility (id, hidden, updatedAt)
+      VALUES (@id, @hidden, @updatedAt)
+    `);
+    (state.examTypes || []).forEach((type, index) => {
+      if (!type?.id || !type.name) return;
+      insertExamType.run({
+        id: type.id,
+        name: type.name,
+        levelEnabled: type.levelEnabled ? 1 : 0,
+        builtIn: type.builtIn ? 1 : 0,
+        sortOrder: index,
+        payloadJson: JSON.stringify(type),
+        updatedAt: now
+      });
+    });
+    Object.entries(state.paperVisibility || {}).forEach(([id, hidden]) => {
+      if (!id) return;
+      insertVisibility.run({ id, hidden: hidden ? 1 : 0, updatedAt: now });
+    });
+  });
+  transaction(db);
+}
+
 function replaceCoreTables(db) {
   const store = getRuntimeStore();
   const transaction = store.transaction((state) => {
@@ -671,6 +766,7 @@ function attemptFromRow(row) {
     status: row.status || payload.status,
     passed: row.passed ?? payload.passed,
     total: row.total ?? payload.total,
+    archivedAt: row.archivedAt || payload.archivedAt || "",
     details: row.detailsJson ? JSON.parse(row.detailsJson) : payload.details,
     createdAt: row.createdAt
   };
@@ -692,6 +788,7 @@ function attemptPayload(attempt) {
     status: attempt.status || null,
     passed: attempt.passed ?? null,
     total: attempt.total ?? null,
+    archivedAt: attempt.archivedAt || null,
     detailsJson: attempt.details ? JSON.stringify(attempt.details) : null,
     payloadJson: JSON.stringify(attempt),
     createdAt: attempt.createdAt
@@ -703,10 +800,10 @@ function insertAttempt(attempt) {
   store.prepare(`
     INSERT OR REPLACE INTO attempts (
       id, userId, username, type, paperId, paperTitle, questionId, questionTitle,
-      classId, score, fullScore, status, passed, total, detailsJson, payloadJson, createdAt
+      classId, score, fullScore, status, passed, total, archivedAt, detailsJson, payloadJson, createdAt
     ) VALUES (
       @id, @userId, @username, @type, @paperId, @paperTitle, @questionId, @questionTitle,
-      @classId, @score, @fullScore, @status, @passed, @total, @detailsJson, @payloadJson, @createdAt
+      @classId, @score, @fullScore, @status, @passed, @total, @archivedAt, @detailsJson, @payloadJson, @createdAt
     )
   `).run(attemptPayload(attempt));
 }
@@ -759,6 +856,9 @@ function attemptQuery(filters = {}) {
   if (paperIds.length) {
     where.push(`paperId IN (${paperIds.map(() => "?").join(",")})`);
     params.push(...paperIds);
+  }
+  if (!filters.includeArchived) {
+    where.push("(archivedAt IS NULL OR archivedAt = '')");
   }
   return {
     whereSql: where.length ? `WHERE ${where.join(" AND ")}` : "",
@@ -828,6 +928,54 @@ function replaceAttempts(attempts) {
   });
   transaction();
   pruneAttempts();
+}
+
+function archiveAttemptsBefore(beforeIso, archivedAt, archiveTerm) {
+  const store = getRuntimeStore();
+  const rows = store.prepare(`
+    SELECT * FROM attempts
+    WHERE datetime(createdAt) < datetime(?)
+      AND (archivedAt IS NULL OR archivedAt = '')
+  `).all(beforeIso);
+  const update = store.prepare(`
+    UPDATE attempts
+    SET archivedAt = @archivedAt, payloadJson = @payloadJson
+    WHERE id = @id
+  `);
+  const transaction = store.transaction((items) => {
+    items.forEach((row) => {
+      const payload = { ...attemptFromRow(row), archivedAt, archiveTerm };
+      update.run({ id: row.id, archivedAt, payloadJson: JSON.stringify(payload) });
+    });
+  });
+  transaction(rows);
+  return rows.length;
+}
+
+function restoreAttemptsByTerm(archiveTerm) {
+  const store = getRuntimeStore();
+  const rows = store.prepare(`
+    SELECT * FROM attempts
+    WHERE archivedAt IS NOT NULL AND archivedAt <> ''
+  `).all();
+  const matched = rows
+    .map(attemptFromRow)
+    .filter((attempt) => String(attempt.archiveTerm || "") === archiveTerm);
+  const update = store.prepare(`
+    UPDATE attempts
+    SET archivedAt = NULL, payloadJson = @payloadJson
+    WHERE id = @id
+  `);
+  const transaction = store.transaction((items) => {
+    items.forEach((attempt) => {
+      const payload = { ...attempt };
+      delete payload.archivedAt;
+      delete payload.archiveTerm;
+      update.run({ id: attempt.id, payloadJson: JSON.stringify(payload) });
+    });
+  });
+  transaction(matched);
+  return matched.length;
 }
 
 function backupTimestamp() {
@@ -930,6 +1078,28 @@ function readBackupCoreTables(sqliteFile) {
   }
 }
 
+function readBackupConfigTables(sqliteFile) {
+  if (!fs.existsSync(sqliteFile)) return null;
+  const backupDb = new Database(sqliteFile, { readonly: true });
+  try {
+    const examTable = backupDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'exam_types'").get();
+    const visibilityTable = backupDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'paper_visibility'").get();
+    if (!examTable && !visibilityTable) return null;
+    const examTypes = examTable
+      ? backupDb.prepare("SELECT payloadJson FROM exam_types ORDER BY sortOrder ASC, id ASC").all().map(payloadFromRow)
+      : null;
+    const paperVisibility = visibilityTable
+      ? Object.fromEntries(backupDb.prepare("SELECT id, hidden FROM paper_visibility").all().map((row) => [row.id, Boolean(row.hidden)]))
+      : null;
+    return {
+      ...(examTypes ? { examTypes } : {}),
+      ...(paperVisibility ? { paperVisibility } : {})
+    };
+  } finally {
+    backupDb.close();
+  }
+}
+
 function readBackupPayload(name) {
   const targetDir = backupDirByName(name);
   const sqliteFile = path.join(targetDir, "runtime.sqlite");
@@ -940,6 +1110,8 @@ function readBackupPayload(name) {
   const normalizedDb = normalizeDb(dbState);
   const coreState = readBackupCoreTables(sqliteFile);
   if (coreState) Object.assign(normalizedDb, coreState);
+  const configState = readBackupConfigTables(sqliteFile);
+  if (configState) Object.assign(normalizedDb, configState);
   const attempts = readBackupAttempts(sqliteFile) || normalizedDb.attempts || [];
   const sessions = readBackupSessions(sqliteFile) || normalizedDb.sessions || {};
   return { db: normalizedDb, papers: paperState, attempts, sessions };
@@ -1087,6 +1259,14 @@ function dateState(startAt = "", endAt = "", now = new Date()) {
   if (startTime && current < startTime) return "not_started";
   if (endTime && current > endTime) return "ended";
   return "open";
+}
+
+function isArchived(item) {
+  return Boolean(item?.archivedAt);
+}
+
+function activeOnly(items) {
+  return (items || []).filter((item) => !isArchived(item));
 }
 
 function publicExamType(type) {
@@ -1785,6 +1965,10 @@ function canManagePaper(user, paper) {
   return paperOwnerId(paper) === user.id;
 }
 
+function paperVersion(paper) {
+  return String(paper?.updatedAt || paper?.createdAt || "");
+}
+
 function slugify(value) {
   const ascii = String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   return ascii || `paper-${crypto.randomBytes(4).toString("hex")}`;
@@ -1803,7 +1987,7 @@ function canManageClass(user, klass) {
 function classPayload(klass, db, viewer = null) {
   const teacher = db.users.find((user) => user.id === klass.teacherId);
   const studentCount = db.enrollments.filter((item) => item.classId === klass.id).length;
-  const assignmentCount = db.assignments.filter((item) => item.classId === klass.id).length;
+  const assignmentCount = db.assignments.filter((item) => item.classId === klass.id && !isArchived(item)).length;
   const examType = db.examTypes.find((item) => item.id === klass.category);
   const { inviteCode, ...visible } = klass;
   return {
@@ -1823,7 +2007,7 @@ function classReportPayload(klass, db, papers, viewer = null, options = {}) {
   const allStudents = enrollments
     .map((item) => db.users.find((user) => user.id === item.userId))
     .filter(Boolean);
-  const assignments = db.assignments.filter((item) => item.classId === klass.id);
+  const assignments = db.assignments.filter((item) => item.classId === klass.id && !isArchived(item));
   const assignmentPaperIds = new Set(assignments.map((item) => item.paperId));
   const allStudentIds = allStudents.map((item) => item.id);
   const pagedStudents = allStudents.slice(studentPage.offset, studentPage.offset + studentPage.pageSize);
@@ -1877,9 +2061,10 @@ function buildStudentSummary(user, db, papers, options = {}) {
   const wrongPage = options.wrongPage || { page: 1, pageSize: 20, offset: 0 };
   const attempts = queryAttempts({ userId: user.id }, 1000);
   const totalAttempts = countAttempts({ userId: user.id });
-  const classIds = new Set(db.enrollments.filter((item) => item.userId === user.id).map((item) => item.classId));
+  const activeClassIds = new Set(activeOnly(db.classes).map((klass) => klass.id));
+  const classIds = new Set(db.enrollments.filter((item) => item.userId === user.id && activeClassIds.has(item.classId)).map((item) => item.classId));
   const assignments = db.assignments
-    .filter((item) => classIds.has(item.classId))
+    .filter((item) => classIds.has(item.classId) && !isArchived(item))
     .map((assignment) => {
       const paper = papers.find((item) => item.id === assignment.paperId);
       if (isPaperHidden(db, paper)) return null;
@@ -1964,6 +2149,118 @@ function buildStudentSummary(user, db, papers, options = {}) {
   };
 }
 
+function csvCell(value) {
+  const text = String(value ?? "");
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function sendCsv(res, filename, rows) {
+  const content = `\ufeff${rows.map((row) => row.map(csvCell).join(",")).join("\n")}\n`;
+  res.writeHead(200, {
+    "Content-Type": "text/csv; charset=utf-8",
+    "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    "Content-Length": Buffer.byteLength(content)
+  });
+  res.end(content);
+}
+
+function studentExportRows(students, db, extra = {}) {
+  return [
+    ["用户名", "角色", "所属教师", "创建时间", ...Object.keys(extra)],
+    ...students.map((student) => {
+      const teacher = db.users.find((item) => item.id === student.teacherId);
+      return [student.username, roleNameServer(student.role), teacher?.username || "", student.createdAt || "", ...Object.values(extra)];
+    })
+  ];
+}
+
+function roleNameServer(role) {
+  return { admin: "管理员", teacher: "教师", student: "学生" }[role] || role;
+}
+
+function archiveByCutoff(db, beforeDate, archiveTerm, actor) {
+  const cutoff = new Date(beforeDate);
+  if (Number.isNaN(cutoff.getTime())) throw new Error("归档截止日期不正确。");
+  const beforeIso = cutoff.toISOString();
+  const archivedAt = new Date().toISOString();
+  let classes = 0;
+  let assignments = 0;
+  db.classes.forEach((klass) => {
+    const createdAt = new Date(klass.createdAt || 0).getTime();
+    if (!klass.archivedAt && createdAt && createdAt < cutoff.getTime()) {
+      klass.archivedAt = archivedAt;
+      klass.archiveTerm = archiveTerm;
+      classes += 1;
+    }
+  });
+  db.assignments.forEach((assignment) => {
+    const marker = assignment.endAt || assignment.dueAt || assignment.createdAt;
+    const markerTime = new Date(marker || 0).getTime();
+    if (!assignment.archivedAt && markerTime && markerTime < cutoff.getTime()) {
+      assignment.archivedAt = archivedAt;
+      assignment.archiveTerm = archiveTerm;
+      assignments += 1;
+    }
+  });
+  const attempts = archiveAttemptsBefore(beforeIso, archivedAt, archiveTerm);
+  audit(db, actor, "archive:term", `${archiveTerm}:${beforeIso}`);
+  saveDb(db);
+  return { classes, assignments, attempts, beforeDate: beforeIso, archiveTerm, archivedAt };
+}
+
+function archiveSummaries(db) {
+  const map = new Map();
+  const ensure = (term, archivedAt = "") => {
+    const key = term || "历史归档";
+    if (!map.has(key)) {
+      map.set(key, { archiveTerm: key, archivedAt, classes: 0, assignments: 0, attempts: 0 });
+    }
+    const item = map.get(key);
+    if (archivedAt && (!item.archivedAt || archivedAt > item.archivedAt)) item.archivedAt = archivedAt;
+    return item;
+  };
+  db.classes.filter(isArchived).forEach((klass) => {
+    const item = ensure(klass.archiveTerm, klass.archivedAt);
+    item.classes += 1;
+  });
+  db.assignments.filter(isArchived).forEach((assignment) => {
+    const item = ensure(assignment.archiveTerm, assignment.archivedAt);
+    item.assignments += 1;
+  });
+  getRuntimeStore().prepare("SELECT * FROM attempts WHERE archivedAt IS NOT NULL AND archivedAt <> ''").all()
+    .map(attemptFromRow)
+    .forEach((attempt) => {
+      const item = ensure(attempt.archiveTerm, attempt.archivedAt);
+      item.attempts += 1;
+    });
+  return Array.from(map.values()).sort((a, b) => String(b.archivedAt || "").localeCompare(String(a.archivedAt || "")));
+}
+
+function restoreArchiveTerm(db, archiveTerm, actor) {
+  const term = String(archiveTerm || "").trim();
+  if (!term) throw new Error("归档名称不能为空。");
+  let classes = 0;
+  let assignments = 0;
+  db.classes.forEach((klass) => {
+    if (klass.archivedAt && String(klass.archiveTerm || "历史归档") === term) {
+      delete klass.archivedAt;
+      delete klass.archiveTerm;
+      classes += 1;
+    }
+  });
+  db.assignments.forEach((assignment) => {
+    if (assignment.archivedAt && String(assignment.archiveTerm || "历史归档") === term) {
+      delete assignment.archivedAt;
+      delete assignment.archiveTerm;
+      assignments += 1;
+    }
+  });
+  const attempts = restoreAttemptsByTerm(term);
+  audit(db, actor, "archive:restore", term);
+  saveDb(db);
+  return { archiveTerm: term, classes, assignments, attempts };
+}
+
 async function api(req, res) {
   const db = loadDb();
   const papers = loadPapers();
@@ -2005,7 +2302,7 @@ async function api(req, res) {
     const attemptPage = pageOptions(url, "attempts", 20, 100);
     const attemptTotal = user ? countAttempts({ userId: user.id }) : 0;
     const attempts = user ? queryAttempts({ userId: user.id }, attemptPage.pageSize, attemptPage.offset) : [];
-    const classes = user ? db.classes.filter((klass) => canAccessClass(user, klass, db)).map((klass) => classPayload(klass, db, user)) : [];
+    const classes = user ? db.classes.filter((klass) => !isArchived(klass) && canAccessClass(user, klass, db)).map((klass) => classPayload(klass, db, user)) : [];
     return sendJson(res, 200, {
       user: publicUser(user),
       attempts,
@@ -2111,7 +2408,8 @@ async function api(req, res) {
     const paper = papers.find((item) => item.id === body.paperId);
     if (!paper) return sendJson(res, 404, { message: "试卷不存在。" });
     const enrolledClassIds = new Set(db.enrollments.filter((item) => item.userId === user.id).map((item) => item.classId));
-    const userAssignments = db.assignments.filter((assignment) => assignment.paperId === paper.id && enrolledClassIds.has(assignment.classId));
+    const activeClassIds = new Set(activeOnly(db.classes).map((klass) => klass.id));
+    const userAssignments = db.assignments.filter((assignment) => !isArchived(assignment) && paper.id === assignment.paperId && enrolledClassIds.has(assignment.classId) && activeClassIds.has(assignment.classId));
     const hasOpenAssignment = userAssignments.some((assignment) => dateState(assignment.startAt, assignment.endAt) === "open");
     const hasPreviousAttempt = countAttempts({ userId: user.id, paperId: paper.id }) > 0;
     if (!isTeacher(user) && userAssignments.length && !hasOpenAssignment && !hasPreviousAttempt) {
@@ -2157,7 +2455,8 @@ async function api(req, res) {
     const body = await readBody(req);
     const { paper, question } = findQuestion(papers, body.paperId, body.questionId);
     const enrolledClassIds = new Set(db.enrollments.filter((item) => item.userId === user.id).map((item) => item.classId));
-    const userAssignments = paper ? db.assignments.filter((assignment) => assignment.paperId === paper.id && enrolledClassIds.has(assignment.classId)) : [];
+    const activeClassIds = new Set(activeOnly(db.classes).map((klass) => klass.id));
+    const userAssignments = paper ? db.assignments.filter((assignment) => !isArchived(assignment) && assignment.paperId === paper.id && enrolledClassIds.has(assignment.classId) && activeClassIds.has(assignment.classId)) : [];
     const hasOpenAssignment = userAssignments.some((assignment) => dateState(assignment.startAt, assignment.endAt) === "open");
     const hasPreviousAttempt = paper ? countAttempts({ userId: user.id, paperId: paper.id }) > 0 : false;
     if (!isTeacher(user) && userAssignments.length && !hasOpenAssignment && !hasPreviousAttempt) {
@@ -2185,7 +2484,7 @@ async function api(req, res) {
     const user = requireTeacher(req, res, db);
     if (!user) return;
     const attemptPage = pageOptions(url, "attempts", 20, 100);
-    const teacherClasses = db.classes.filter((klass) => isAdmin(user) || klass.teacherId === user.id);
+    const teacherClasses = db.classes.filter((klass) => !isArchived(klass) && (isAdmin(user) || klass.teacherId === user.id));
     const classIds = new Set(teacherClasses.map((klass) => klass.id));
     const studentIds = new Set(db.enrollments.filter((item) => classIds.has(item.classId)).map((item) => item.userId));
     const studentIdList = Array.from(studentIds);
@@ -2199,10 +2498,42 @@ async function api(req, res) {
       },
       classes: teacherClasses.map((klass) => classPayload(klass, db, user)),
       recentAttempts: queryAttempts({ userIds: studentIdList }, attemptPage.pageSize, attemptPage.offset),
-      assignments: db.assignments.filter((item) => classIds.has(item.classId)).slice(0, 30),
+      assignments: db.assignments.filter((item) => classIds.has(item.classId) && !isArchived(item)).slice(0, 30),
       pagination: {
         recentAttempts: paginationMeta(totalAttempts, attemptPage.page, attemptPage.pageSize)
       }
+    });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/teacher/workbench") {
+    const user = requireTeacher(req, res, db);
+    if (!user) return;
+    const classes = activeOnly(db.classes).filter((klass) => isAdmin(user) || klass.teacherId === user.id);
+    const classIds = new Set(classes.map((klass) => klass.id));
+    const assignments = db.assignments
+      .filter((item) => classIds.has(item.classId) && !isArchived(item))
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+      .slice(0, 8)
+      .map((assignment) => ({
+        ...assignment,
+        className: db.classes.find((klass) => klass.id === assignment.classId)?.name || "",
+        paperTitle: papers.find((paper) => paper.id === assignment.paperId)?.title || assignment.title
+      }));
+    const studentIds = new Set(db.enrollments.filter((item) => classIds.has(item.classId)).map((item) => item.userId));
+    const recentAttempts = queryAttempts({ userIds: Array.from(studentIds) }, 8);
+    const attentionClasses = classes
+      .map((klass) => ({
+        ...classPayload(klass, db, user),
+        recentAttempts: countAttempts({ userIds: db.enrollments.filter((item) => item.classId === klass.id).map((item) => item.userId) })
+      }))
+      .sort((a, b) => b.studentCount - a.studentCount)
+      .slice(0, 6);
+    return sendJson(res, 200, {
+      totals: { classes: classes.length, students: studentIds.size, assignments: assignments.length },
+      classes: classes.slice(0, 8).map((klass) => classPayload(klass, db, user)),
+      assignments,
+      attentionClasses,
+      recentAttempts
     });
   }
 
@@ -2230,7 +2561,17 @@ async function api(req, res) {
   if (req.method === "GET" && url.pathname === "/api/admin/papers") {
     const user = requireTeacher(req, res, db);
     if (!user) return;
-    return sendJson(res, 200, { papers: papers.map((paper) => paperWithVisibility(db, paper, user)) });
+    let rows = papers.map((paper) => paperWithVisibility(db, paper, user));
+    const category = String(url.searchParams.get("category") || "all");
+    const keyword = String(url.searchParams.get("keyword") || "").trim().toLowerCase();
+    if (category && category !== "all") rows = rows.filter((paper) => paper.category === category);
+    if (keyword) rows = rows.filter((paper) => String(paper.title || "").toLowerCase().includes(keyword));
+    if (url.searchParams.has("papersPage") || url.searchParams.has("papersPageSize")) {
+      const paperPage = pageOptions(url, "papers", 50, 200);
+      const paged = paginateItems(rows, paperPage);
+      return sendJson(res, 200, { papers: paged.items, pagination: { papers: paged.meta } });
+    }
+    return sendJson(res, 200, { papers: rows });
   }
 
   if (req.method === "POST" && url.pathname === "/api/admin/backup") {
@@ -2369,17 +2710,26 @@ async function api(req, res) {
     const paper = validatePaper(body.paper || body, db);
     const index = papers.findIndex((item) => item.id === paper.id);
     const now = new Date().toISOString();
+    const hasVersionGuard = Object.prototype.hasOwnProperty.call(body, "baseUpdatedAt");
+    let savedPaper = null;
     if (index >= 0) {
       if (!canManagePaper(user, papers[index])) return sendJson(res, 403, { message: "只能编辑自己创建的试卷。" });
-      papers[index] = { ...papers[index], ...paper, updatedBy: user.id, updatedAt: now };
+      const currentVersion = paperVersion(papers[index]);
+      const expectedVersion = String(body.baseUpdatedAt || "");
+      if (hasVersionGuard && currentVersion && expectedVersion !== currentVersion) {
+        return sendJson(res, 409, { message: "这套试卷已被其他人更新，请刷新后再编辑。" });
+      }
+      savedPaper = { ...papers[index], ...paper, updatedBy: user.id, updatedAt: now };
+      papers[index] = savedPaper;
       audit(db, user, "paper:update", paper.id);
     } else {
-      papers.unshift({ ...paper, createdBy: user.id, createdAt: now, updatedBy: user.id, updatedAt: now });
+      savedPaper = { ...paper, createdBy: user.id, createdAt: now, updatedBy: user.id, updatedAt: now };
+      papers.unshift(savedPaper);
       audit(db, user, "paper:create", paper.id);
     }
     savePapers(papers);
     saveDb(db);
-    return sendJson(res, 200, { paper });
+    return sendJson(res, 200, { paper: paperWithVisibility(db, savedPaper, user) });
   }
 
   if (req.method === "POST" && url.pathname === "/api/admin/papers/visibility") {
@@ -2459,14 +2809,14 @@ async function api(req, res) {
   if (req.method === "GET" && url.pathname === "/api/classes") {
     const user = requireUser(req, res, db);
     if (!user) return;
-    const classes = db.classes.filter((klass) => canAccessClass(user, klass, db)).map((klass) => classPayload(klass, db, user));
+    const classes = db.classes.filter((klass) => !isArchived(klass) && canAccessClass(user, klass, db)).map((klass) => classPayload(klass, db, user));
     const classIds = new Set(classes.map((klass) => klass.id));
     const visiblePaperIds = new Set(papers.filter((paper) => !isPaperHidden(db, paper)).map((paper) => paper.id));
     const userAttempts = user.role === "student" ? queryAttempts({ userId: user.id }, 1000) : [];
     return sendJson(res, 200, {
       classes,
       assignments: db.assignments
-        .filter((item) => classIds.has(item.classId) && visiblePaperIds.has(item.paperId))
+        .filter((item) => classIds.has(item.classId) && visiblePaperIds.has(item.paperId) && !isArchived(item))
         .map((assignment) => ({
           ...assignment,
           paperTitle: papers.find((paper) => paper.id === assignment.paperId)?.title || assignment.title,
@@ -2511,7 +2861,7 @@ async function api(req, res) {
     if (user.role !== "student") return sendJson(res, 403, { message: "只有学生账号可以加入班级。" });
     const body = await readBody(req);
     const code = String(body.inviteCode || "").trim().toUpperCase();
-    const klass = db.classes.find((item) => item.inviteCode === code);
+    const klass = db.classes.find((item) => item.inviteCode === code && !isArchived(item));
     if (!klass) return sendJson(res, 404, { message: "班级邀请码不存在。" });
     const exists = db.enrollments.some((item) => item.classId === klass.id && item.userId === user.id);
     if (!exists) {
@@ -2528,7 +2878,7 @@ async function api(req, res) {
     if (!user) return;
     const classId = decodeURIComponent(classStudentsAdd[1]);
     const klass = db.classes.find((item) => item.id === classId);
-    if (!canManageClass(user, klass)) {
+    if (!canManageClass(user, klass) || isArchived(klass)) {
       return sendJson(res, 404, { message: "班级不存在或无权限。" });
     }
     const body = await readBody(req);
@@ -2569,7 +2919,7 @@ async function api(req, res) {
     if (!user) return;
     const classId = decodeURIComponent(assignmentCreate[1]);
     const klass = db.classes.find((item) => item.id === classId);
-    if (!klass || (!isAdmin(user) && klass.teacherId !== user.id)) {
+    if (!klass || isArchived(klass) || (!isAdmin(user) && klass.teacherId !== user.id)) {
       return sendJson(res, 404, { message: "班级不存在或无权限。" });
     }
     const body = await readBody(req);
@@ -2598,13 +2948,37 @@ async function api(req, res) {
     if (!user) return;
     const classId = decodeURIComponent(classReport[1]);
     const klass = db.classes.find((item) => item.id === classId);
-    if (!klass || (!isAdmin(user) && klass.teacherId !== user.id)) {
+    if (!klass || isArchived(klass) || (!isAdmin(user) && klass.teacherId !== user.id)) {
       return sendJson(res, 404, { message: "班级不存在或无权限。" });
     }
     return sendJson(res, 200, classReportPayload(klass, db, papers, user, {
       studentPage: pageOptions(url, "students", 30, 100),
       attemptPage: pageOptions(url, "attempts", 20, 100)
     }));
+  }
+
+  const classStudentsExport = url.pathname.match(/^\/api\/classes\/([^/]+)\/students\/export$/);
+  if (req.method === "GET" && classStudentsExport) {
+    const user = requireTeacher(req, res, db);
+    if (!user) return;
+    const classId = decodeURIComponent(classStudentsExport[1]);
+    const klass = db.classes.find((item) => item.id === classId);
+    if (!klass || isArchived(klass) || (!isAdmin(user) && klass.teacherId !== user.id)) {
+      return sendJson(res, 404, { message: "班级不存在或无权限。" });
+    }
+    const students = db.enrollments
+      .filter((item) => item.classId === classId)
+      .map((item) => db.users.find((student) => student.id === item.userId))
+      .filter(Boolean);
+    const rows = [
+      ["班级", "用户名", "所属教师", "加入时间"],
+      ...students.map((student) => {
+        const enrollment = db.enrollments.find((item) => item.classId === classId && item.userId === student.id);
+        const teacher = db.users.find((item) => item.id === student.teacherId);
+        return [klass.name, student.username, teacher?.username || "", enrollment?.createdAt || ""];
+      })
+    ];
+    return sendCsv(res, `${klass.name || "class"}-students.csv`, rows);
   }
 
   if (req.method === "GET" && url.pathname === "/api/admin/users") {
@@ -2626,6 +3000,20 @@ async function api(req, res) {
         users: paged.meta
       }
     });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/admin/users/export") {
+    const user = requireAdmin(req, res, db);
+    if (!user) return;
+    const teacherId = String(url.searchParams.get("teacherId") || "");
+    const teacher = db.users.find((item) => item.id === teacherId && (item.role === "teacher" || item.role === "admin"));
+    if (!teacher) return sendJson(res, 404, { message: "教师不存在。" });
+    const students = db.users.filter((item) => item.role === "student" && item.status !== "disabled" && item.teacherId === teacherId);
+    const rows = [
+      ["所属教师", "用户名", "创建时间"],
+      ...students.map((student) => [teacher.username, student.username, student.createdAt || ""])
+    ];
+    return sendCsv(res, `${teacher.username}-students.csv`, rows);
   }
 
   if (req.method === "POST" && url.pathname === "/api/admin/users") {
@@ -2692,6 +3080,34 @@ async function api(req, res) {
     });
   }
 
+  if (req.method === "POST" && url.pathname === "/api/admin/users/reset-passwords") {
+    const user = requireAdmin(req, res, db);
+    if (!user) return;
+    const body = await readBody(req);
+    let ids = Array.isArray(body.userIds) ? [...new Set(body.userIds.map((id) => String(id || "")).filter(Boolean))] : [];
+    const teacherId = String(body.teacherId || "");
+    if (!ids.length && teacherId) {
+      ids = db.users
+        .filter((item) => item.role === "student" && item.status !== "disabled" && item.teacherId === teacherId)
+        .map((item) => item.id);
+    }
+    const password = String(body.password || "");
+    if (!ids.length) return sendJson(res, 400, { message: "请先选择账号。" });
+    if (password.length < 6) return sendJson(res, 400, { message: "新密码至少 6 位。" });
+    let updated = 0;
+    ids.forEach((id) => {
+      const target = db.users.find((item) => item.id === id);
+      if (!target) return;
+      const { salt, hash } = hashPassword(password);
+      target.salt = salt;
+      target.passwordHash = hash;
+      updated += 1;
+      audit(db, user, "user:reset-password", target.id);
+    });
+    if (updated) saveDb(db);
+    return sendJson(res, 200, { updated });
+  }
+
   const roleUpdate = url.pathname.match(/^\/api\/admin\/users\/([^/]+)\/role$/);
   if (req.method === "POST" && roleUpdate) {
     const user = requireAdmin(req, res, db);
@@ -2710,6 +3126,31 @@ async function api(req, res) {
     audit(db, user, "user:role", target.id);
     saveDb(db);
     return sendJson(res, 200, { user: publicUser(target, db) });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/admin/archive/term") {
+    const user = requireAdmin(req, res, db);
+    if (!user) return;
+    const body = await readBody(req);
+    const archiveTerm = String(body.archiveTerm || "历史归档").trim();
+    const beforeDate = String(body.beforeDate || "").trim();
+    if (!beforeDate) return sendJson(res, 400, { message: "请填写归档截止日期。" });
+    const result = archiveByCutoff(db, beforeDate, archiveTerm, user);
+    return sendJson(res, 200, { archive: result });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/admin/archive/terms") {
+    const user = requireAdmin(req, res, db);
+    if (!user) return;
+    return sendJson(res, 200, { archives: archiveSummaries(db) });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/admin/archive/restore") {
+    const user = requireAdmin(req, res, db);
+    if (!user) return;
+    const body = await readBody(req);
+    const result = restoreArchiveTerm(db, body.archiveTerm, user);
+    return sendJson(res, 200, { restored: result });
   }
 
   return sendJson(res, 404, { message: "接口不存在。" });

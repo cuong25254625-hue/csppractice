@@ -10,7 +10,9 @@ const state = {
   allowRegistration: true,
   dashboard: { attemptsPage: 1, attemptsPagination: null },
   study: { completedPage: 1, wrongPage: 1, activeTab: "pending" },
-  manage: { papers: [], overview: null, users: [], userTeachers: [], students: [], usersPagination: null, studentsPagination: null, backups: [], editPaper: null, classReport: null, overviewAttemptsPage: 1, classReportPages: { studentsPage: 1, attemptsPage: 1 }, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" }, classKeyword: "", classDetailTab: "students", _dataLoaded: false }
+  workbench: null,
+  workbenchTab: "classes",
+  manage: { papers: [], overview: null, users: [], userTeachers: [], students: [], usersPagination: null, studentsPagination: null, backups: [], archives: [], editPaper: null, classReport: null, overviewAttemptsPage: 1, classReportPages: { studentsPage: 1, attemptsPage: 1 }, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" }, classKeyword: "", classDetailTab: "students", _dataLoaded: false }
 };
 
 const app = document.querySelector("#app");
@@ -26,6 +28,7 @@ const closeAuth = document.querySelector("#closeAuth");
 const toast = document.querySelector("#toast");
 const accountMenu = document.querySelector("#accountMenu");
 const accountManageLink = document.querySelector("#accountManageLink");
+const accountWorkbenchLink = document.querySelector("#accountWorkbenchLink");
 const changePasswordButton = document.querySelector("#changePasswordButton");
 const logoutButton = document.querySelector("#logoutButton");
 const passwordDialog = document.querySelector("#passwordDialog");
@@ -56,6 +59,9 @@ const cancelSubmitBtn = document.querySelector("#cancelSubmit");
 const closeSubmitConfirm = document.querySelector("#closeSubmitConfirm");
 let pendingMarkdownTextarea = null;
 let pendingSubmitPaperId = null;
+let draftSaveTimer = null;
+let draftIntervalTimer = null;
+let activeDraftPaperId = "";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -185,16 +191,18 @@ function examTypeById(id) {
 
 function setActiveNav(hash) {
   document.querySelectorAll("[data-link]").forEach((link) => link.classList.remove("active"));
-  const name = hash.startsWith("#/manage") || hash === "#/guide" ? "manage" : hash.startsWith("#/classes") ? "classes" : hash === "#/study" ? "study" : hash === "#/dashboard" ? "dashboard" : "home";
+  const name = hash.startsWith("#/manage") || hash === "#/guide" || hash === "#/workbench" ? "manage" : hash.startsWith("#/classes") ? "classes" : hash === "#/study" ? "study" : hash === "#/dashboard" ? "dashboard" : "home";
   document.querySelector(`[data-link="${name}"]`)?.classList.add("active");
 }
 
 function route() {
   const hash = location.hash || "#/";
+  if (!hash.startsWith("#/paper/")) stopPaperDraftAutoSave();
   setActiveNav(hash);
   if (hash.startsWith("#/paper/")) renderPaper(decodeURIComponent(hash.replace("#/paper/", "")));
   else if (hash === "#/dashboard") renderDashboard();
   else if (hash === "#/study") renderStudy();
+  else if (hash === "#/workbench") renderTeacherWorkbench();
   else if (hash === "#/classes" || hash.startsWith("#/classes/")) renderClasses();
   else if (hash.startsWith("#/manage")) renderManage();
   else if (hash === "#/guide") renderGuide();
@@ -319,7 +327,7 @@ function renderHome() {
           <div class="panel-body">
             ${
               state.user
-                ? `<p><strong>${escapeHtml(state.user.username)}</strong> · ${roleName(state.user.role)}</p><p class="muted">最近记录：${state.attempts.length} 条</p><div class="submit-row"><a class="secondary-btn" href="#/study">学习中心</a>${isTeacher() ? `<a class="primary-btn" href="#/manage">管理台</a>` : ""}</div>`
+                ? `<p><strong>${escapeHtml(state.user.username)}</strong> · ${roleName(state.user.role)}</p><p class="muted">最近记录：${state.attempts.length} 条</p><div class="submit-row"><a class="secondary-btn" href="#/study">学习中心</a>${isTeacher() ? `<a class="secondary-btn" href="#/workbench">教师工作台</a><a class="primary-btn" href="#/manage">管理台</a>` : ""}</div>`
                 : `<p class="muted">登录后可以保存练习记录、加入班级和查看错题。</p><button class="primary-btn" type="button" data-open-auth>登　录</button>`
             }
           </div>
@@ -448,7 +456,9 @@ function renderPaper(paperId) {
           </div>
           <div class="submit-row">
             <button class="primary-btn" type="button" id="submitObjective" ${objectiveQuestions.length ? "" : "disabled"}>提交</button>
+            <button class="secondary-btn" type="button" id="clearDraft">清除草稿</button>
           </div>
+          <div class="muted draft-status" id="draftStatus">答题草稿会自动保存在本机浏览器。</div>
           <div class="score-box" id="scoreBox">
             <div class="muted">${state.programSubmissionEnabled ? "单选和判断题自动判分；编程题逐题提交。" : "单选和判断题自动判分；编程题提交暂时关闭。"}</div>
           </div>
@@ -457,14 +467,123 @@ function renderPaper(paperId) {
     </div>
   `;
 
-  document.querySelectorAll("input[type='radio'], textarea").forEach((element) => {
+  const restored = restorePaperDraft(paper.id);
+  startPaperDraftAutoSave(paper.id);
+  document.querySelectorAll("input[type='radio'], input[type='checkbox'], textarea").forEach((element) => {
     element.addEventListener("input", updateAnswerCard);
     element.addEventListener("change", updateAnswerCard);
+    element.addEventListener("input", () => schedulePaperDraftSave(paper.id));
+    element.addEventListener("change", () => schedulePaperDraftSave(paper.id));
   });
   document.querySelector("#submitObjective")?.addEventListener("click", () => submitObjective(paper.id));
+  document.querySelector("#clearDraft")?.addEventListener("click", () => {
+    clearPaperDraft(paper.id, "草稿已清除。");
+    document.querySelectorAll("[data-objective-id] input").forEach((input) => { input.checked = false; });
+    document.querySelectorAll(".code-editor[id^='code-']").forEach((editor) => { editor.value = defaultCode(); });
+    updateAnswerCard();
+  });
   document.querySelectorAll("[data-run-code]").forEach((button) => button.addEventListener("click", () => submitCode(paper.id, button.dataset.runCode)));
   document.querySelectorAll("[data-jump-question]").forEach((link) => link.addEventListener("click", jumpToQuestion));
   updateAnswerCard();
+  updateDraftStatus(paper.id, restored ? "已恢复上次未提交的草稿。" : "");
+}
+
+function paperDraftKey(paperId) {
+  return `csppractice:draft:${state.user?.id || "guest"}:${paperId}`;
+}
+
+function collectPaperDraft(paperId) {
+  const answers = {};
+  document.querySelectorAll("[data-objective-id]").forEach((item) => {
+    const value = answerValues(item.dataset.objectiveId, item.dataset.objectiveType);
+    if (Array.isArray(value) ? value.length : value !== "") answers[item.dataset.objectiveId] = value;
+  });
+  const code = {};
+  document.querySelectorAll(".code-editor[id^='code-']").forEach((editor) => {
+    const id = editor.id.replace(/^code-/, "");
+    if (editor.value && editor.value !== defaultCode()) code[id] = editor.value;
+  });
+  return { paperId, userId: state.user?.id || "guest", answers, code, savedAt: new Date().toISOString() };
+}
+
+function restorePaperDraft(paperId) {
+  const raw = window.localStorage.getItem(paperDraftKey(paperId));
+  if (!raw) return false;
+  let draft = null;
+  try {
+    draft = JSON.parse(raw);
+  } catch (error) {
+    return false;
+  }
+  Object.entries(draft.answers || {}).forEach(([id, value]) => {
+    const values = Array.isArray(value) ? value.map(String) : [String(value)];
+    Array.from(document.querySelectorAll("[data-objective-id] input")).filter((input) => input.name === id).forEach((input) => {
+      input.checked = values.includes(input.value);
+    });
+  });
+  Object.entries(draft.code || {}).forEach(([id, value]) => {
+    const editor = document.querySelector(`#code-${CSS.escape(id)}`);
+    if (editor) editor.value = value;
+  });
+  return true;
+}
+
+function schedulePaperDraftSave(paperId) {
+  window.clearTimeout(draftSaveTimer);
+  draftSaveTimer = window.setTimeout(() => savePaperDraft(paperId), 800);
+}
+
+function startPaperDraftAutoSave(paperId) {
+  stopPaperDraftAutoSave(false);
+  activeDraftPaperId = paperId;
+  draftIntervalTimer = window.setInterval(() => {
+    if (activeDraftPaperId) savePaperDraft(activeDraftPaperId);
+  }, 20000);
+}
+
+function stopPaperDraftAutoSave(saveFirst = true) {
+  if (saveFirst && activeDraftPaperId) savePaperDraft(activeDraftPaperId);
+  window.clearTimeout(draftSaveTimer);
+  window.clearInterval(draftIntervalTimer);
+  draftSaveTimer = null;
+  draftIntervalTimer = null;
+  activeDraftPaperId = "";
+}
+
+function savePaperDraft(paperId) {
+  const draft = collectPaperDraft(paperId);
+  if (!Object.keys(draft.answers).length && !Object.keys(draft.code).length) {
+    window.localStorage.removeItem(paperDraftKey(paperId));
+    updateDraftStatus(paperId);
+    return;
+  }
+  window.localStorage.setItem(paperDraftKey(paperId), JSON.stringify(draft));
+  updateDraftStatus(paperId);
+}
+
+function clearPaperDraft(paperId, message = "已提交，草稿已清除。") {
+  window.localStorage.removeItem(paperDraftKey(paperId));
+  updateDraftStatus(paperId, message);
+}
+
+function updateDraftStatus(paperId, message = "") {
+  const box = document.querySelector("#draftStatus");
+  if (!box) return;
+  const raw = window.localStorage.getItem(paperDraftKey(paperId));
+  if (message) {
+    box.textContent = message;
+    return;
+  }
+  if (!raw) {
+    box.textContent = "答题草稿会自动保存在本机浏览器。";
+    return;
+  }
+  try {
+    const draft = JSON.parse(raw);
+    box.textContent = `草稿已保存：${formatDateTime(draft.savedAt)}`;
+  } catch (error) {
+    box.textContent = "答题草稿会自动保存在本机浏览器。";
+  }
 }
 
 function jumpToQuestion(event) {
@@ -655,6 +774,7 @@ async function doSubmitObjective(paperId) {
       <div class="muted">已保存到练习记录。</div>
     `;
     applyObjectiveResult(data.details);
+    clearPaperDraft(paperId);
     notify("提交完成。");
   } catch (error) {
     notify(error.message);
@@ -988,8 +1108,10 @@ async function renderManage(options = {}) {
     return;
   }
   const routeClassId = (location.hash || "").startsWith("#/manage/classes/")
-    ? decodeURIComponent((location.hash || "").replace("#/manage/classes/", ""))
+    ? decodeURIComponent((location.hash || "").replace("#/manage/classes/", "").split("?")[0])
     : "";
+  const routeParams = new URLSearchParams((location.hash || "").split("?")[1] || "");
+  if (!routeClassId && routeParams.get("tab")) state.manage.tab = routeParams.get("tab");
   const shouldFetch = !options.skipFetch || !state.manage._dataLoaded;
   try {
     if (shouldFetch) {
@@ -1019,8 +1141,10 @@ async function renderManage(options = {}) {
     }
     if (routeClassId) {
       state.manage.tab = "classes";
+      if (routeParams.get("tab")) state.manage.classDetailTab = routeParams.get("tab");
       if (state.manage.classReport?.class?.id !== routeClassId) {
         state.manage.classReportPages = { studentsPage: 1, attemptsPage: 1 };
+        if (!routeParams.get("tab")) state.manage.classDetailTab = "students";
       }
       const pages = state.manage.classReportPages || { studentsPage: 1, attemptsPage: 1 };
       const params = new URLSearchParams({
@@ -1119,6 +1243,7 @@ async function renderManage(options = {}) {
     history.replaceState(null, "", "#/manage");
     renderManage({ skipFetch: true });
   });
+  document.querySelector("#exportClassStudents")?.addEventListener("click", exportActiveClassStudents);
   document.querySelectorAll("[data-class-detail-tab]").forEach((button) => button.addEventListener("click", () => {
     state.manage.classDetailTab = button.dataset.classDetailTab;
     renderManage({ skipFetch: true });
@@ -1152,6 +1277,12 @@ async function renderManage(options = {}) {
   document.querySelector("#refreshBackups")?.addEventListener("click", loadBackups);
   document.querySelectorAll("[data-restore-backup]").forEach((button) => button.addEventListener("click", () => restoreBackup(button.dataset.restoreBackup)));
   document.querySelector("#bindStudentTeacher")?.addEventListener("click", bindStudentTeacher);
+  document.querySelector("#resetSelectedPasswords")?.addEventListener("click", resetSelectedPasswords);
+  document.querySelector("#resetTeacherStudents")?.addEventListener("click", resetTeacherStudentsPasswords);
+  document.querySelector("#exportTeacherStudents")?.addEventListener("click", exportTeacherStudents);
+  document.querySelector("#archiveTermButton")?.addEventListener("click", archiveTermData);
+  document.querySelector("#refreshArchives")?.addEventListener("click", loadArchives);
+  document.querySelectorAll("[data-restore-archive]").forEach((button) => button.addEventListener("click", () => restoreArchive(button.dataset.restoreArchive)));
   document.querySelector("#newRole")?.addEventListener("change", updateUserTeacherField);
   document.querySelector("#bulkRole")?.addEventListener("change", updateUserTeacherField);
   updateUserTeacherField();
@@ -1371,6 +1502,77 @@ function renderGuide() {
   });
 }
 
+async function renderTeacherWorkbench() {
+  if (!isTeacher()) {
+    app.innerHTML = `<div class="panel empty">教师工作台需要教师或管理员权限。</div>`;
+    return;
+  }
+  if (!state.workbench) {
+    try {
+      state.workbench = await api("/api/teacher/workbench");
+    } catch (error) {
+      notify(error.message);
+    }
+  }
+  const data = state.workbench || { totals: {}, classes: [], assignments: [], attentionClasses: [], recentAttempts: [] };
+  const tab = state.workbenchTab || "classes";
+
+  function workbenchTabButton(id, label) {
+    return `<button class="wb-tab-btn ${tab === id ? "active" : ""}" type="button" data-workbench-tab="${id}">${label}</button>`;
+  }
+
+  app.innerHTML = `
+    <section class="manage-shell teacher-workbench">
+      <div class="panel">
+        <div class="panel-head"><h1>教师工作台</h1><a class="primary-btn" href="#/manage">进入管理台</a></div>
+        <div class="panel-body stat-grid"><a class="stat-card stat-card-link" href="#/manage?tab=classes"><strong>${data.totals.classes || 0}</strong><span>班级</span></a><a class="stat-card stat-card-link" href="#/manage?tab=classes"><strong>${data.totals.students || 0}</strong><span>学生</span></a><a class="stat-card stat-card-link" href="#/manage?tab=classes"><strong>${data.assignments.length || 0}</strong><span>作业</span></a><div class="stat-card"><strong>${data.attentionClasses.length || 0}</strong><span>待查看</span></div></div>
+      </div>
+      <div class="workbench-tabs">${workbenchTabButton("classes", "班级总览")}${workbenchTabButton("assignments", "作业中心")}${workbenchTabButton("attempts", "近期答题")}</div>
+
+      <div class="workbench-panel" ${tab !== "classes" ? "hidden" : ""}>
+        <div class="panel">
+          <div class="panel-head"><h2>我的班级</h2><a class="secondary-btn" href="#/manage?tab=classes">创建班级</a></div>
+          <div class="panel-body">
+            <ul class="paper-list">${(data.classes || []).map((klass) => `<li class="paper-item"><span class="paper-icon">${klass.level ? `${klass.level}级` : "班级"}</span><div><h3>${escapeHtml(klass.name)}</h3><div class="meta"><span>${escapeHtml(klass.categoryName || categoryName(klass.category))}</span><span>${klass.studentCount} 名学生</span><span>${klass.assignmentCount} 个作业</span></div></div><div class="paper-row-actions"><a class="secondary-btn" href="#/manage/classes/${encodeURIComponent(klass.id)}?tab=assignments">发布作业</a><a class="primary-btn" href="#/manage/classes/${encodeURIComponent(klass.id)}">查看</a></div></li>`).join("") || `<li class="empty">暂无班级，去管理台创建第一个班级。</li>`}</ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="workbench-panel" ${tab !== "assignments" ? "hidden" : ""}>
+        <div class="wb-two-col">
+          <div class="panel">
+            <div class="panel-head"><h2>最近作业</h2><a class="secondary-btn" href="#/manage?tab=classes">快捷发布</a></div>
+            <div class="panel-body">
+              <ul class="mini-list">${(data.assignments || []).map((item) => `<li><a class="mini-link" href="#/paper/${item.paperId}"><span>${escapeHtml(item.paperTitle || item.title)}<div class="muted">${escapeHtml(item.className || "")} · ${assignmentTimeText(item)}</div></span></a></li>`).join("") || `<li class="muted">暂无作业</li>`}</ul>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>待查看学情</h2></div>
+            <div class="panel-body">
+              <ul class="mini-list">${(data.attentionClasses || []).map((klass) => `<li><span>${escapeHtml(klass.name)}<div class="muted">${klass.studentCount} 名学生 · ${klass.assignmentCount} 个作业</div></span><a class="secondary-btn compact-action" href="#/manage/classes/${encodeURIComponent(klass.id)}">查看</a></li>`).join("") || `<li class="muted">暂无需要查看的班级</li>`}</ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="workbench-panel" ${tab !== "attempts" ? "hidden" : ""}>
+        <div class="panel">
+          <div class="panel-head"><h2>近期答题</h2></div>
+          <div class="panel-body">
+            <ul class="mini-list">${(data.recentAttempts || []).map((item) => `<li><a class="mini-link" href="#/paper/${item.paperId}"><span>${escapeHtml(item.username || "")}<div class="muted">${escapeHtml(item.paperTitle || item.questionTitle || "")}</div></span><span class="muted">${item.type === "objective" ? `${item.score}/${item.fullScore}` : `${item.passed || 0}/${item.total || 0}`}</span></a></li>`).join("") || `<li class="muted">暂无答题记录</li>`}</ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+
+  document.querySelectorAll("[data-workbench-tab]").forEach((button) => button.addEventListener("click", () => {
+    state.workbenchTab = button.dataset.workbenchTab;
+    app.innerHTML = "";
+    renderTeacherWorkbench();
+  }));
+}
+
 function manageTabButton(id, label, active) {
   return `<button class="${active === id ? "active" : ""}" type="button" role="tab" aria-selected="${active === id}" data-manage-tab="${id}">${label}</button>`;
 }
@@ -1506,7 +1708,7 @@ function renderClassManagementDetail(overview) {
   return `
     <div class="manage-class-detail">
       <div class="panel">
-        <div class="panel-head"><h2>${escapeHtml(report.class.name)}</h2><a class="secondary-btn compact-action" href="#/manage" data-back-class-list>返回班级列表</a></div>
+        <div class="panel-head"><h2>${escapeHtml(report.class.name)}</h2><div class="submit-row"><button class="secondary-btn compact-action" type="button" id="exportClassStudents">导出名单</button><a class="secondary-btn compact-action" href="#/manage" data-back-class-list>返回班级列表</a></div></div>
         <div class="panel-body">
           ${renderClassHeader(report)}
           <div class="class-detail-tabs">
@@ -1671,6 +1873,40 @@ function renderManageSettingsSection() {
         ${renderRegistrationAdmin()}
         ${renderBackupAdmin()}
         ${renderExamTypeAdmin()}
+        ${renderArchiveAdmin()}
+      </div>
+    </div>
+  `;
+}
+
+function renderArchiveAdmin() {
+  const archives = state.manage.archives || [];
+  return `
+    <div class="panel settings-card">
+      <div class="panel-head"><h2>数据归档</h2></div>
+      <div class="panel-body">
+        <p class="muted settings-card-note">按截止日期归档旧班级、旧作业和旧答题记录；归档后默认不出现在日常页面。</p>
+        <div class="settings-compact-form">
+          <input id="archiveTerm" placeholder="学期名称，如 2026 春季">
+          <input id="archiveBeforeDate" type="date">
+          <button class="danger-btn" type="button" id="archiveTermButton">执行归档</button>
+          <button class="secondary-btn" type="button" id="refreshArchives">查看归档</button>
+        </div>
+        <div class="backup-result muted" id="archiveResult">建议归档前先创建备份。</div>
+        <details class="backup-restore-box" ${archives.length ? "open" : ""}>
+          <summary><span>历史归档</span><span class="muted">${archives.length ? `${archives.length} 个学期` : "点击查看归档"}</span></summary>
+          <ul class="mini-list backup-list">
+            ${archives.map((archive) => `
+              <li>
+                <span>
+                  <strong>${escapeHtml(archive.archiveTerm)}</strong>
+                  <div class="muted">${escapeHtml(formatDateTime(archive.archivedAt))} · 班级 ${archive.classes || 0} 个 · 作业 ${archive.assignments || 0} 个 · 答题 ${archive.attempts || 0} 条</div>
+                </span>
+                <button class="secondary-btn" type="button" data-restore-archive="${escapeHtml(archive.archiveTerm)}">恢复</button>
+              </li>
+            `).join("") || `<li class="muted">还没有加载归档列表。</li>`}
+          </ul>
+        </details>
       </div>
     </div>
   `;
@@ -2128,11 +2364,12 @@ function loadPaperIntoEditor(id) {
 
 async function savePaperFromEditor() {
   try {
+    const baseUpdatedAt = state.manage.editPaper?.updatedAt || state.manage.editPaper?.createdAt || "";
     let paper = collectBuilderPaper();
     const jsonDetails = document.querySelector(".advanced-json");
     if (jsonDetails?.open && document.querySelector("#paperJson").value.trim()) paper = JSON.parse(document.querySelector("#paperJson").value);
-    await api("/api/admin/papers", { method: "POST", body: { paper } });
-    state.manage.editPaper = JSON.parse(JSON.stringify(paper));
+    const data = await api("/api/admin/papers", { method: "POST", body: { paper, baseUpdatedAt } });
+    state.manage.editPaper = JSON.parse(JSON.stringify(data.paper || paper));
     await refreshPapers();
     notify("试卷已保存。");
     renderManage();
@@ -2586,9 +2823,19 @@ function renderUserAdmin() {
               <button class="primary-btn" type="button" id="bindStudentTeacher" ${students.length ? "" : "disabled"}>保存绑定</button>
             </div>
           </section>
+          <section class="settings-block">
+            <h3 class="subhead">批量维护</h3>
+            <div class="stack-form">
+              <input id="bulkResetPassword" type="password" placeholder="给勾选账号设置新密码">
+              <button class="danger-btn" type="button" id="resetSelectedPasswords">批量重置密码</button>
+              <select id="exportTeacherId">${teacherOptions}</select>
+              <button class="danger-btn" type="button" id="resetTeacherStudents">重置该教师学生密码</button>
+              <button class="secondary-btn" type="button" id="exportTeacherStudents">按教师导出学生</button>
+            </div>
+          </section>
           <details class="settings-block user-list-block user-list-dropdown">
             <summary><span>账号列表</span><span class="muted">分页显示</span></summary>
-            <ul class="mini-list user-admin-list">${state.manage.users.map((user) => `<li><span>${escapeHtml(user.username)}<div class="muted">${roleName(user.role)}${user.teacherName ? ` · ${escapeHtml(user.teacherName)}` : ""}</div></span><span class="muted">${user.attemptCount} 次</span></li>`).join("")}</ul>
+            <ul class="mini-list user-admin-list">${state.manage.users.map((user) => `<li><label class="inline-check"><input type="checkbox" data-user-select="${user.id}"><span>${escapeHtml(user.username)}<div class="muted">${roleName(user.role)}${user.teacherName ? ` · ${escapeHtml(user.teacherName)}` : ""}</div></span></label><span class="muted">${user.attemptCount} 次</span></li>`).join("")}</ul>
             ${renderPager(state.manage.usersPagination, "manage-users")}
           </details>
         </div>
@@ -2667,6 +2914,116 @@ async function bindStudentTeacher() {
       body: { role: "student", status: "active", teacherId }
     });
     notify("学生所属老师已更新。");
+    renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+function selectedUserIds() {
+  return Array.from(document.querySelectorAll("[data-user-select]:checked")).map((input) => input.dataset.userSelect);
+}
+
+async function resetSelectedPasswords() {
+  const userIds = selectedUserIds();
+  const password = document.querySelector("#bulkResetPassword")?.value || "";
+  if (!userIds.length) return notify("请先在账号列表中勾选账号。");
+  if (password.length < 6) return notify("新密码至少 6 位。");
+  if (!window.confirm(`确定重置 ${userIds.length} 个账号的密码吗？`)) return;
+  try {
+    const data = await api("/api/admin/users/reset-passwords", { method: "POST", body: { userIds, password } });
+    notify(`已重置 ${data.updated || 0} 个账号的密码。`);
+    document.querySelector("#bulkResetPassword").value = "";
+    renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function resetTeacherStudentsPasswords() {
+  const teacherId = document.querySelector("#exportTeacherId")?.value || "";
+  const password = document.querySelector("#bulkResetPassword")?.value || "";
+  if (!teacherId) return notify("请先选择教师。");
+  if (password.length < 6) return notify("新密码至少 6 位。");
+  if (!window.confirm("确定重置该教师名下所有学生的密码吗？")) return;
+  try {
+    const data = await api("/api/admin/users/reset-passwords", { method: "POST", body: { teacherId, password } });
+    notify(`已重置 ${data.updated || 0} 个学生账号的密码。`);
+    document.querySelector("#bulkResetPassword").value = "";
+    renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function exportTeacherStudents() {
+  const teacherId = document.querySelector("#exportTeacherId")?.value || "";
+  if (!teacherId) return notify("请先选择教师。");
+  try {
+    const response = await fetch(`/api/admin/users/export?teacherId=${encodeURIComponent(teacherId)}`, { credentials: "include" });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.message || "导出失败。");
+    }
+    downloadBlob(await response.blob(), `teacher-students-${new Date().toISOString().slice(0, 10)}.csv`);
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function exportActiveClassStudents() {
+  const classId = state.manage.classReport?.class?.id;
+  if (!classId) return notify("请先进入一个班级。");
+  try {
+    const response = await fetch(`/api/classes/${encodeURIComponent(classId)}/students/export`, { credentials: "include" });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.message || "导出失败。");
+    }
+    downloadBlob(await response.blob(), `class-students-${new Date().toISOString().slice(0, 10)}.csv`);
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function archiveTermData() {
+  const archiveTerm = document.querySelector("#archiveTerm")?.value || "";
+  const beforeDate = document.querySelector("#archiveBeforeDate")?.value || "";
+  const result = document.querySelector("#archiveResult");
+  if (!beforeDate) return notify("请先选择归档截止日期。");
+  if (!window.confirm(`确定归档 ${beforeDate} 之前的旧班级、旧作业和旧答题记录吗？建议先备份。`)) return;
+  try {
+    const data = await api("/api/admin/archive/term", { method: "POST", body: { archiveTerm, beforeDate } });
+    const archive = data.archive || {};
+    if (result) result.textContent = `归档完成：班级 ${archive.classes || 0} 个，作业 ${archive.assignments || 0} 个，答题记录 ${archive.attempts || 0} 条。`;
+    state.manage._dataLoaded = false;
+    await loadArchives(false);
+    await Promise.all([refreshMe(), refreshPapers()]);
+    renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function loadArchives(rerender = true) {
+  try {
+    const data = await api("/api/admin/archive/terms");
+    state.manage.archives = data.archives || [];
+    if (rerender) renderManage();
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function restoreArchive(archiveTerm) {
+  if (!archiveTerm) return;
+  if (!window.confirm(`确定恢复归档「${archiveTerm}」吗？恢复后对应班级、作业和答题记录会重新进入日常页面。`)) return;
+  try {
+    const data = await api("/api/admin/archive/restore", { method: "POST", body: { archiveTerm } });
+    const restored = data.restored || {};
+    notify(`已恢复：班级 ${restored.classes || 0} 个，作业 ${restored.assignments || 0} 个，答题 ${restored.attempts || 0} 条。`);
+    state.manage._dataLoaded = false;
+    await Promise.all([loadArchives(false), refreshMe(), refreshPapers()]);
     renderManage();
   } catch (error) {
     notify(error.message);
@@ -2761,6 +3118,8 @@ function toggleAccountMenu() {
 
 function updateAuthButton() {
   const canManage = Boolean(isTeacher());
+  accountWorkbenchLink.hidden = !canManage;
+  accountWorkbenchLink.style.display = canManage ? "" : "none";
   accountManageLink.hidden = !canManage;
   accountManageLink.style.display = canManage ? "" : "none";
   authButton.textContent = state.user ? state.user.username : "登录";
@@ -2843,5 +3202,8 @@ confirmSubmitBtn.addEventListener("click", () => {
 cancelSubmitBtn.addEventListener("click", () => submitConfirmDialog.close());
 closeSubmitConfirm.addEventListener("click", () => submitConfirmDialog.close());
 window.addEventListener("hashchange", route);
+window.addEventListener("beforeunload", () => {
+  if (activeDraftPaperId) savePaperDraft(activeDraftPaperId);
+});
 
 init();

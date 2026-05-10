@@ -1900,6 +1900,50 @@ button:disabled {
   align-self: start;
 }
 
+.exam-timer {
+  padding: 12px;
+  text-align: center;
+  background: #f0fdf4;
+  border: 1px solid var(--brand);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.exam-timer-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.exam-timer-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.exam-timer.warning {
+  background: #fefce8;
+  border-color: #eab308;
+}
+
+.exam-timer.warning .exam-timer-value { color: #b45309; }
+
+.exam-timer.danger {
+  background: #fef2f2;
+  border-color: #ef4444;
+  animation: pulse-border 1s infinite;
+}
+
+.exam-timer.danger .exam-timer-value { color: #dc2626; }
+
+@keyframes pulse-border {
+  0%, 100% { border-color: #ef4444; }
+  50% { border-color: #fca5a5; }
+}
+
 .answer-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);

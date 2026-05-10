@@ -12,6 +12,9 @@ const state = {
   study: { completedPage: 1, wrongPage: 1, activeTab: "pending" },
   workbench: null,
   workbenchTab: "classes",
+  examSession: null,
+  examTimerId: null,
+  examHeartbeatId: null,
   manage: { papers: [], overview: null, users: [], userTeachers: [], students: [], usersPagination: null, studentsPagination: null, backups: [], archives: [], editPaper: null, classReport: null, overviewAttemptsPage: 1, classReportPages: { studentsPage: 1, attemptsPage: 1 }, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" }, classKeyword: "", classDetailTab: "students", _dataLoaded: false }
 };
 
@@ -197,7 +200,10 @@ function setActiveNav(hash) {
 
 function route() {
   const hash = location.hash || "#/";
-  if (!hash.startsWith("#/paper/")) stopPaperDraftAutoSave();
+  if (!hash.startsWith("#/paper/")) {
+    stopPaperDraftAutoSave();
+    stopExamTimers();
+  }
   setActiveNav(hash);
   if (hash.startsWith("#/paper/")) renderPaper(decodeURIComponent(hash.replace("#/paper/", "")));
   else if (hash === "#/dashboard") renderDashboard();
@@ -408,12 +414,41 @@ function rankUsers() {
   return [...localRanks, ...fallback].sort((a, b) => b.count - a.count).slice(0, 8);
 }
 
-function renderPaper(paperId) {
+async function renderPaper(paperId) {
   const paper = state.papers.find((item) => item.id === paperId);
   if (!paper) {
     app.innerHTML = `<div class="panel empty">试卷不存在</div>`;
     return;
   }
+
+  // Parse assignment ID from URL hash
+  const hashParams = new URLSearchParams((location.hash || "").split("?")[1] || "");
+  const assignmentId = hashParams.get("assignmentId") || "";
+  let examData = null;
+  let examDuration = 0;
+
+  if (assignmentId && state.user) {
+    try {
+      const sessionResp = await api(`/api/exam/session?assignmentId=${encodeURIComponent(assignmentId)}`);
+      const existingSession = sessionResp.session;
+      if (existingSession && existingSession.remainingSeconds > 0) {
+        examData = existingSession;
+        examDuration = existingSession.remainingSeconds;
+      } else if (!existingSession) {
+        const startResp = await api("/api/exam/start", { method: "POST", body: { assignmentId } });
+        if (startResp.session && startResp.session.remainingSeconds > 0) {
+          examData = startResp.session;
+          examDuration = startResp.session.remainingSeconds;
+        }
+      }
+    } catch (e) {
+      // Not a timed exam or exam start failed — just continue normally
+    }
+  }
+
+  state.examSession = examData;
+  if (state.examTimerId) { clearInterval(state.examTimerId); state.examTimerId = null; }
+
   const stats = paperStats(paper);
   const objectiveQuestions = flattenObjectiveQuestions(paper.questions);
   const groups = [
@@ -424,6 +459,13 @@ function renderPaper(paperId) {
     ["完善程序题", paper.questions.filter((question) => question.type === "completion")],
     ["编程题", paper.questions.filter((question) => question.type === "program")]
   ].filter(([, questions]) => questions.length);
+
+  const timerHtml = examData ? `
+    <div class="exam-timer" id="examTimer">
+      <div class="exam-timer-label">剩余时间</div>
+      <div class="exam-timer-value" id="examTimerDisplay">${formatExamTime(examDuration)}</div>
+    </div>
+  ` : "";
 
   app.innerHTML = `
     <div class="paper-layout">
@@ -451,6 +493,7 @@ function renderPaper(paperId) {
       <aside class="panel answer-card">
         <div class="panel-head"><h2>答题卡</h2></div>
         <div class="panel-body">
+          ${timerHtml}
           <div class="answer-grid">
             ${paper.questions.map((question, index) => `<a href="#q-${question.id}" data-card="${question.id}" data-jump-question="${question.id}">${index + 1}</a>`).join("")}
           </div>
@@ -466,6 +509,49 @@ function renderPaper(paperId) {
       </aside>
     </div>
   `;
+
+  // Set up exam timer
+  if (examData) {
+    const timerDisplay = document.querySelector("#examTimerDisplay");
+    const timerContainer = document.querySelector("#examTimer");
+    let remaining = examDuration;
+    let autoSubmitted = false;
+
+    // Cleanup all timers
+    function stopExamTimers() {
+      if (state.examTimerId) { clearInterval(state.examTimerId); state.examTimerId = null; }
+      if (state.examHeartbeatId) { clearInterval(state.examHeartbeatId); state.examHeartbeatId = null; }
+      state.examSession = null;
+    }
+
+    const heartbeat = async () => {
+      try {
+        const resp = await api("/api/exam/heartbeat", { method: "POST", body: { sessionId: examData.id } });
+        if (resp.expired && !autoSubmitted) {
+          remaining = 0;
+        }
+      } catch (e) { /* ignore heartbeat errors */ }
+    };
+
+    state.examTimerId = setInterval(() => {
+      remaining--;
+      if (timerDisplay) {
+        timerDisplay.textContent = formatExamTime(Math.max(0, remaining));
+      }
+      if (timerContainer) {
+        timerContainer.classList.toggle("warning", remaining <= 300 && remaining > 60);
+        timerContainer.classList.toggle("danger", remaining <= 60);
+      }
+      if (remaining <= 0 && !autoSubmitted) {
+        autoSubmitted = true;
+        stopExamTimers();
+        notify("考试时间到，正在自动提交...");
+        doSubmitObjective(paper.id);
+      }
+    }, 1000);
+
+    state.examHeartbeatId = setInterval(heartbeat, 30000);
+  }
 
   const restored = restorePaperDraft(paper.id);
   startPaperDraftAutoSave(paper.id);
@@ -856,7 +942,7 @@ async function renderStudy() {
         <div class="panel">
           <div class="panel-head"><h2>待完成作业</h2><span class="muted">${pendingAssignments.length} 个</span></div>
           <ul class="paper-list">
-            ${pendingAssignments.map((item) => `<li class="paper-item"><span class="paper-icon">作业</span><div><h3><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a></h3><div class="meta"><span>${escapeHtml(item.className)}</span><span>${assignmentStatusText(item)}</span><span>${assignmentTimeText(item)}</span><span>${item.bestObjective ? renderScoreBadge(item.bestObjective.score, item.bestObjective.fullScore, "客观题") : "客观题未提交"}</span><span>编程题 ${item.acceptedPrograms}/${item.programTotal}</span></div></div><a class="${item.status === "open" ? "primary-btn" : "secondary-btn"}" href="#/paper/${item.paperId}">${item.status === "not_started" ? "预览" : "去完成"}</a></li>`).join("") || `<li class="empty">暂无待完成作业</li>`}
+            ${pendingAssignments.map((item) => `<li class="paper-item"><span class="paper-icon">作业</span><div><h3><a href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a></h3><div class="meta"><span>${escapeHtml(item.className)}</span><span>${assignmentStatusText(item)}</span><span>${assignmentTimeText(item)}</span><span>${item.bestObjective ? renderScoreBadge(item.bestObjective.score, item.bestObjective.fullScore, "客观题") : "客观题未提交"}</span><span>编程题 ${item.acceptedPrograms}/${item.programTotal}</span></div></div><a class="${item.status === "open" ? "primary-btn" : "secondary-btn"}" href="#/paper/${item.paperId}?assignmentId=${item.id}">${item.status === "not_started" ? "预览" : "去完成"}</a></li>`).join("") || `<li class="empty">暂无待完成作业</li>`}
           </ul>
         </div>`;
     }
@@ -994,11 +1080,11 @@ function renderClassAssignmentItem(item) {
   return `
     <li class="class-assignment-item">
       <div class="class-assignment-main">
-        <a class="class-assignment-title" href="#/paper/${item.paperId}">${escapeHtml(item.paperTitle || item.title)}</a>
+        <a class="class-assignment-title" href="#/paper/${item.paperId}?assignmentId=${item.id}">${escapeHtml(item.paperTitle || item.title)}</a>
         <div class="meta"><span>${assignmentTimeText(item)}</span>${item.bestObjective ? `<span>已答 ${assignmentScoreText(item)}</span>` : `<span>未答题</span>`}</div>
       </div>
       ${assignmentScoreBadge(item)}
-      <a class="primary-btn compact-action" href="#/paper/${item.paperId}">${item.bestObjective ? "再次做题" : "去完成"}</a>
+      <a class="primary-btn compact-action" href="#/paper/${item.paperId}?assignmentId=${item.id}">${item.bestObjective ? "再次做题" : "去完成"}</a>
     </li>
   `;
 }
@@ -1839,6 +1925,7 @@ function renderAssignmentPublisher(classes) {
           <label><span>选择试卷</span><select id="assignmentPaper">${state.manage.papers.map((paper) => `<option value="${paper.id}">${escapeHtml(paper.title)}</option>`).join("")}</select></label>
           <label><span>开始时间</span><input id="assignmentStart" type="datetime-local"></label>
           <label><span>结束时间</span><input id="assignmentEnd" type="datetime-local"></label>
+          <label><span>答题时长</span><select id="assignmentDuration"><option value="0">不限时</option><option value="10">10 分钟</option><option value="20">20 分钟</option><option value="30">30 分钟</option><option value="45">45 分钟</option><option value="60">60 分钟</option><option value="90">90 分钟</option><option value="120">120 分钟</option></select></label>
           <button class="primary-btn" type="button" id="createAssignment">确认发布作业</button>
         </div>
       </div>
@@ -1929,6 +2016,18 @@ function renderRegistrationAdmin() {
 
 function statCard(label, value) {
   return `<div class="stat-card"><strong>${value}</strong><span>${label}</span></div>`;
+}
+
+function stopExamTimers() {
+  if (state.examTimerId) { clearInterval(state.examTimerId); state.examTimerId = null; }
+  if (state.examHeartbeatId) { clearInterval(state.examHeartbeatId); state.examHeartbeatId = null; }
+  state.examSession = null;
+}
+
+function formatExamTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 function assignmentTimeText(item) {
@@ -2752,7 +2851,8 @@ async function createAssignment() {
       body: {
         paperId,
         startAt: document.querySelector("#assignmentStart").value,
-        endAt: document.querySelector("#assignmentEnd").value
+        endAt: document.querySelector("#assignmentEnd").value,
+        duration: Number(document.querySelector("#assignmentDuration").value) || 0
       }
     });
     notify("作业已发布。");
@@ -3204,6 +3304,7 @@ closeSubmitConfirm.addEventListener("click", () => submitConfirmDialog.close());
 window.addEventListener("hashchange", route);
 window.addEventListener("beforeunload", () => {
   if (activeDraftPaperId) savePaperDraft(activeDraftPaperId);
+  stopExamTimers();
 });
 
 init();

@@ -176,16 +176,37 @@ function getRuntimeStore() {
       startAt TEXT,
       endAt TEXT,
       dueAt TEXT,
+      duration INTEGER DEFAULT 0,
       createdBy TEXT,
       createdAt TEXT NOT NULL,
       sortOrder INTEGER NOT NULL,
       payloadJson TEXT NOT NULL
     )
   `).run();
+  // Migration: add duration to assignments if created before the column was added
+  try { runtimeStore.prepare("ALTER TABLE assignments ADD COLUMN duration INTEGER DEFAULT 0").run(); } catch (_) { /* already exists */ }
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_assignments_class ON assignments (classId, createdAt DESC)").run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_assignments_paper ON assignments (paperId)").run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_assignments_paper_created ON assignments (paperId, createdAt DESC)").run();
   runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_assignments_created ON assignments (createdAt DESC)").run();
+  runtimeStore.prepare(`
+    CREATE TABLE IF NOT EXISTS exam_sessions (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      assignmentId TEXT NOT NULL,
+      paperId TEXT NOT NULL,
+      startedAt TEXT NOT NULL,
+      expiresAt TEXT NOT NULL,
+      submittedAt TEXT,
+      createdAt TEXT NOT NULL,
+      sortOrder INTEGER NOT NULL DEFAULT 0,
+      payloadJson TEXT NOT NULL
+    )
+  `).run();
+  // Migration: add sortOrder to exam_sessions if created before the column was added
+  try { runtimeStore.prepare("ALTER TABLE exam_sessions ADD COLUMN sortOrder INTEGER NOT NULL DEFAULT 0").run(); } catch (_) { /* already exists */ }
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_exam_sessions_user_assignment ON exam_sessions (userId, assignmentId)").run();
+  runtimeStore.prepare("CREATE INDEX IF NOT EXISTS idx_exam_sessions_assignment ON exam_sessions (assignmentId)").run();
   runtimeStore.prepare(`
     CREATE TABLE IF NOT EXISTS audit_logs (
       id TEXT PRIMARY KEY,
@@ -399,6 +420,8 @@ function normalizeDb(db) {
   db.classes ||= [];
   db.enrollments ||= [];
   db.assignments ||= [];
+  db.assignments.forEach((a) => { a.duration = Number(a.duration) || 0; });
+  db.examSessions ||= [];
   db.auditLogs ||= [];
   db.examTypes ||= [];
   db.paperVisibility ||= {};
@@ -579,6 +602,7 @@ function loadCoreTables() {
     classes: loadPayloadRows("classes"),
     enrollments: loadPayloadRows("enrollments"),
     assignments: loadPayloadRows("assignments"),
+    examSessions: loadPayloadRows("exam_sessions"),
     auditLogs: loadPayloadRows("audit_logs")
   };
 }
@@ -657,12 +681,16 @@ function replaceCoreTables(db) {
       VALUES (@id, @classId, @userId, @createdAt, @addedBy, @sortOrder, @payloadJson)
     `);
     const insertAssignment = store.prepare(`
-      INSERT INTO assignments (id, classId, paperId, title, startAt, endAt, dueAt, createdBy, createdAt, sortOrder, payloadJson)
-      VALUES (@id, @classId, @paperId, @title, @startAt, @endAt, @dueAt, @createdBy, @createdAt, @sortOrder, @payloadJson)
+      INSERT INTO assignments (id, classId, paperId, title, startAt, endAt, dueAt, duration, createdBy, createdAt, sortOrder, payloadJson)
+      VALUES (@id, @classId, @paperId, @title, @startAt, @endAt, @dueAt, @duration, @createdBy, @createdAt, @sortOrder, @payloadJson)
     `);
     const insertAuditLog = store.prepare(`
       INSERT INTO audit_logs (id, userId, username, action, target, createdAt, sortOrder, payloadJson)
       VALUES (@id, @userId, @username, @action, @target, @createdAt, @sortOrder, @payloadJson)
+    `);
+    const insertExamSession = store.prepare(`
+      INSERT INTO exam_sessions (id, userId, assignmentId, paperId, startedAt, expiresAt, submittedAt, createdAt, sortOrder, payloadJson)
+      VALUES (@id, @userId, @assignmentId, @paperId, @startedAt, @expiresAt, @submittedAt, @createdAt, @sortOrder, @payloadJson)
     `);
 
     (state.users || []).forEach((user, index) => {
@@ -714,6 +742,7 @@ function replaceCoreTables(db) {
         startAt: assignment.startAt || "",
         endAt: assignment.endAt || "",
         dueAt: assignment.dueAt || assignment.endAt || "",
+        duration: assignment.duration || 0,
         createdBy: assignment.createdBy || null,
         createdAt: assignment.createdAt || new Date().toISOString(),
         sortOrder: index,
@@ -731,6 +760,21 @@ function replaceCoreTables(db) {
         createdAt: log.createdAt || new Date().toISOString(),
         sortOrder: index,
         payloadJson: JSON.stringify(log)
+      });
+    });
+    (state.examSessions || []).forEach((session, index) => {
+      if (!session?.id || !session.userId || !session.assignmentId) return;
+      insertExamSession.run({
+        id: session.id,
+        userId: session.userId,
+        assignmentId: session.assignmentId,
+        paperId: session.paperId || "",
+        startedAt: session.startedAt || new Date().toISOString(),
+        expiresAt: session.expiresAt || "",
+        submittedAt: session.submittedAt || null,
+        createdAt: session.createdAt || new Date().toISOString(),
+        sortOrder: index,
+        payloadJson: JSON.stringify(session)
       });
     });
   });
@@ -2407,6 +2451,15 @@ async function api(req, res) {
     const body = await readBody(req);
     const paper = papers.find((item) => item.id === body.paperId);
     if (!paper) return sendJson(res, 404, { message: "试卷不存在。" });
+    const examSession = db.examSessions.find((item) =>
+      item.userId === user.id &&
+      item.paperId === paper.id &&
+      !item.submittedAt
+    );
+    if (examSession) {
+      examSession.submittedAt = new Date().toISOString();
+      saveDb(db);
+    }
     const enrolledClassIds = new Set(db.enrollments.filter((item) => item.userId === user.id).map((item) => item.classId));
     const activeClassIds = new Set(activeOnly(db.classes).map((klass) => klass.id));
     const userAssignments = db.assignments.filter((assignment) => !isArchived(assignment) && paper.id === assignment.paperId && enrolledClassIds.has(assignment.classId) && activeClassIds.has(assignment.classId));
@@ -2913,6 +2966,82 @@ async function api(req, res) {
     return sendJson(res, 200, { added, skipped, class: classPayload(klass, db, user) });
   }
 
+  if (req.method === "POST" && url.pathname === "/api/exam/start") {
+    const user = requireUser(req, res, db);
+    if (!user) return;
+    const body = await readBody(req);
+    const assignmentId = String(body.assignmentId || "").trim();
+    if (!assignmentId) return sendJson(res, 400, { message: "缺少作业ID。" });
+    const assignment = db.assignments.find((item) => item.id === assignmentId && !isArchived(item));
+    if (!assignment) return sendJson(res, 404, { message: "作业不存在。" });
+    const duration = Number(assignment.duration) || 0;
+    if (duration <= 0) return sendJson(res, 400, { message: "此作业不限时，无需开始考试。" });
+    const klass = db.classes.find((item) => item.id === assignment.classId && !isArchived(item));
+    if (!klass) return sendJson(res, 404, { message: "班级不存在。" });
+    const enrolled = db.enrollments.some((item) => item.classId === klass.id && item.userId === user.id);
+    if (!enrolled && !isTeacher(user)) return sendJson(res, 403, { message: "你不在这个班级中。" });
+    const now = new Date();
+    const existingSession = db.examSessions.find((item) =>
+      item.userId === user.id &&
+      item.assignmentId === assignmentId &&
+      !item.submittedAt &&
+      new Date(item.expiresAt).getTime() > now.getTime()
+    );
+    if (existingSession) {
+      const remaining = Math.max(0, Math.floor((new Date(existingSession.expiresAt).getTime() - now.getTime()) / 1000));
+      return sendJson(res, 200, { session: { id: existingSession.id, expiresAt: existingSession.expiresAt, remainingSeconds: remaining } });
+    }
+    const expiresAt = new Date(now.getTime() + duration * 60 * 1000);
+    const session = {
+      id: crypto.randomUUID(),
+      userId: user.id,
+      assignmentId,
+      paperId: assignment.paperId,
+      startedAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      submittedAt: null,
+      createdAt: now.toISOString()
+    };
+    db.examSessions.push(session);
+    saveDb(db);
+    return sendJson(res, 201, { session: { id: session.id, expiresAt: session.expiresAt, remainingSeconds: duration * 60 } });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/exam/session") {
+    const user = requireUser(req, res, db);
+    if (!user) return;
+    const assignmentId = String(url.searchParams.get("assignmentId") || "").trim();
+    if (!assignmentId) return sendJson(res, 400, { message: "缺少作业ID。" });
+    const now = new Date();
+    const session = db.examSessions.find((item) =>
+      item.userId === user.id &&
+      item.assignmentId === assignmentId &&
+      !item.submittedAt
+    );
+    if (!session) return sendJson(res, 200, { session: null });
+    const remaining = Math.max(0, Math.floor((new Date(session.expiresAt).getTime() - now.getTime()) / 1000));
+    if (remaining <= 0 && !session.submittedAt) {
+      session.submittedAt = now.toISOString();
+      saveDb(db);
+    }
+    return sendJson(res, 200, { session: { id: session.id, expiresAt: session.expiresAt, remainingSeconds: remaining, submittedAt: session.submittedAt } });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/exam/heartbeat") {
+    const user = requireUser(req, res, db);
+    if (!user) return;
+    const body = await readBody(req);
+    const sessionId = String(body.sessionId || "").trim();
+    if (!sessionId) return sendJson(res, 400, { message: "缺少会话ID。" });
+    const session = db.examSessions.find((item) => item.id === sessionId && item.userId === user.id);
+    if (!session) return sendJson(res, 404, { message: "考试会话不存在。" });
+    const now = new Date();
+    if (session.submittedAt || now.getTime() >= new Date(session.expiresAt).getTime()) {
+      return sendJson(res, 410, { message: "考试已结束。", expired: true });
+    }
+    return sendJson(res, 200, { remainingSeconds: Math.max(0, Math.floor((new Date(session.expiresAt).getTime() - now.getTime()) / 1000)) });
+  }
+
   const assignmentCreate = url.pathname.match(/^\/api\/classes\/([^/]+)\/assignments$/);
   if (req.method === "POST" && assignmentCreate) {
     const user = requireTeacher(req, res, db);
@@ -2933,6 +3062,7 @@ async function api(req, res) {
       startAt: body.startAt || "",
       endAt: body.endAt || body.dueAt || "",
       dueAt: body.endAt || body.dueAt || "",
+      duration: Math.max(0, Number(body.duration) || 0),
       createdBy: user.id,
       createdAt: new Date().toISOString()
     };

@@ -10,7 +10,7 @@ const state = {
   allowRegistration: true,
   dashboard: { attemptsPage: 1, attemptsPagination: null },
   study: { completedPage: 1, wrongPage: 1, activeTab: "pending" },
-  manage: { papers: [], overview: null, users: [], userTeachers: [], students: [], usersPagination: null, studentsPagination: null, backups: [], editPaper: null, classReport: null, overviewAttemptsPage: 1, classReportPages: { studentsPage: 1, attemptsPage: 1 }, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" }, classKeyword: "", classDetailTab: "students" }
+  manage: { papers: [], overview: null, users: [], userTeachers: [], students: [], usersPagination: null, studentsPagination: null, backups: [], editPaper: null, classReport: null, overviewAttemptsPage: 1, classReportPages: { studentsPage: 1, attemptsPage: 1 }, tab: "papers", paperView: "list", importResult: null, paperFilter: { category: "all", keyword: "" }, classKeyword: "", classDetailTab: "students", _dataLoaded: false }
 };
 
 const app = document.querySelector("#app");
@@ -839,16 +839,18 @@ function assignmentScoreBadge(item) {
 function renderCompletedAssignmentItem(item) {
   return `
     <li class="completed-assignment-item">
-      <div class="completed-assignment-header">
-        <a class="completed-assignment-title" href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a>
-        <span class="completed-assignment-class muted">${escapeHtml(item.className)}</span>
+      <div class="completed-assignment-left">
+        <div class="completed-assignment-header">
+          <a class="completed-assignment-title" href="#/paper/${item.paperId}">${escapeHtml(item.title)}</a>
+          <span class="completed-assignment-class muted">${escapeHtml(item.className)}</span>
+        </div>
+        <div class="completed-assignment-times">
+          ${item.startAt ? `<div class="muted">开始 ${escapeHtml(item.startAt.replace("T", " "))}</div>` : ""}
+          ${item.endAt || item.dueAt ? `<div class="muted">结束 ${escapeHtml((item.endAt || item.dueAt).replace("T", " "))}</div>` : ""}
+          ${!item.startAt && !item.endAt && !item.dueAt ? `<div class="muted">长期</div>` : ""}
+        </div>
       </div>
-      <div class="completed-assignment-times">
-        ${item.startAt ? `<div class="muted">开始 ${escapeHtml(item.startAt.replace("T", " "))}</div>` : ""}
-        ${item.endAt || item.dueAt ? `<div class="muted">结束 ${escapeHtml((item.endAt || item.dueAt).replace("T", " "))}</div>` : ""}
-        ${!item.startAt && !item.endAt && !item.dueAt ? `<div class="muted">长期</div>` : ""}
-      </div>
-      <div class="completed-assignment-footer">
+      <div class="completed-assignment-right">
         ${assignmentScoreBadge(item)}
         <a class="secondary-btn compact-action" href="#/paper/${item.paperId}">再次做题</a>
       </div>
@@ -980,7 +982,7 @@ async function joinClass() {
   }
 }
 
-async function renderManage() {
+async function renderManage(options = {}) {
   if (!isTeacher()) {
     app.innerHTML = `<div class="panel empty">这里需要教师或管理员权限。</div>`;
     return;
@@ -988,29 +990,33 @@ async function renderManage() {
   const routeClassId = (location.hash || "").startsWith("#/manage/classes/")
     ? decodeURIComponent((location.hash || "").replace("#/manage/classes/", ""))
     : "";
+  const shouldFetch = !options.skipFetch || !state.manage._dataLoaded;
   try {
-    const overviewParams = new URLSearchParams({
-      attemptsPage: String(state.manage.overviewAttemptsPage || 1)
-    });
-    const userParams = new URLSearchParams({
-      usersPage: String(state.manage.usersPagination?.page || 1)
-    });
-    const studentParams = new URLSearchParams({
-      studentsPage: String(state.manage.studentsPagination?.page || 1)
-    });
-    const [overview, paperData, users, studentData] = await Promise.all([
-      api(`/api/teacher/overview?${overviewParams.toString()}`),
-      api("/api/admin/papers"),
-      isAdmin() ? api(`/api/admin/users?${userParams.toString()}`) : Promise.resolve({ users: [], teachers: [], pagination: {} }),
-      api(`/api/teacher/students?${studentParams.toString()}`)
-    ]);
-    state.manage.overview = overview;
-    state.manage.papers = paperData.papers || [];
-    state.manage.users = users.users || [];
-    state.manage.userTeachers = users.teachers || [];
-    state.manage.usersPagination = users.pagination?.users || null;
-    state.manage.students = studentData.students || [];
-    state.manage.studentsPagination = studentData.pagination?.students || null;
+    if (shouldFetch) {
+      const overviewParams = new URLSearchParams({
+        attemptsPage: String(state.manage.overviewAttemptsPage || 1)
+      });
+      const userParams = new URLSearchParams({
+        usersPage: String(state.manage.usersPagination?.page || 1)
+      });
+      const studentParams = new URLSearchParams({
+        studentsPage: String(state.manage.studentsPagination?.page || 1)
+      });
+      const [overview, paperData, users, studentData] = await Promise.all([
+        api(`/api/teacher/overview?${overviewParams.toString()}`),
+        api("/api/admin/papers"),
+        isAdmin() ? api(`/api/admin/users?${userParams.toString()}`) : Promise.resolve({ users: [], teachers: [], pagination: {} }),
+        api(`/api/teacher/students?${studentParams.toString()}`)
+      ]);
+      state.manage.overview = overview;
+      state.manage.papers = paperData.papers || [];
+      state.manage.users = users.users || [];
+      state.manage.userTeachers = users.teachers || [];
+      state.manage.usersPagination = users.pagination?.users || null;
+      state.manage.students = studentData.students || [];
+      state.manage.studentsPagination = studentData.pagination?.students || null;
+      state.manage._dataLoaded = true;
+    }
     if (routeClassId) {
       state.manage.tab = "classes";
       if (state.manage.classReport?.class?.id !== routeClassId) {
@@ -1053,7 +1059,7 @@ async function renderManage() {
       history.replaceState(null, "", "#/manage");
     }
     state.manage.tab = button.dataset.manageTab;
-    renderManage();
+    renderManage({ skipFetch: true });
   }));
   document.querySelector("#backPaperList")?.addEventListener("click", showPaperList);
   document.querySelector("#newPaper")?.addEventListener("click", createNewPaper);
@@ -1082,7 +1088,7 @@ async function renderManage() {
   document.querySelector("#importWordPaperFile")?.addEventListener("change", importPapersFromWord);
   document.querySelector("#managePaperCategoryFilter")?.addEventListener("change", (event) => {
     state.manage.paperFilter.category = event.target.value;
-    renderManage();
+    renderManage({ skipFetch: true });
   });
   const keywordInput = document.querySelector("#managePaperKeywordFilter");
   if (keywordInput) {
@@ -1091,31 +1097,31 @@ async function renderManage() {
       window.clearTimeout(keywordTimer);
       keywordTimer = window.setTimeout(() => {
         state.manage.paperFilter.keyword = event.target.value.trim();
-        renderManage();
+        renderManage({ skipFetch: true });
       }, 300);
     });
   }
   document.querySelector("#clearPaperFilter")?.addEventListener("click", () => {
     state.manage.paperFilter = { category: "all", keyword: "" };
-    renderManage();
+    renderManage({ skipFetch: true });
   });
   document.querySelector("#classKeyword")?.addEventListener("input", (event) => {
     state.manage.classKeyword = event.target.value;
   });
   document.querySelector("#classSearchBtn")?.addEventListener("click", () => {
     state.manage.classKeyword = document.querySelector("#classKeyword")?.value || "";
-    renderManage();
+    renderManage({ skipFetch: true });
   });
   document.querySelector("[data-back-class-list]")?.addEventListener("click", (event) => {
     event.preventDefault();
     state.manage.classReport = null;
     state.manage.classDetailTab = "students";
     history.replaceState(null, "", "#/manage");
-    renderManage();
+    renderManage({ skipFetch: true });
   });
   document.querySelectorAll("[data-class-detail-tab]").forEach((button) => button.addEventListener("click", () => {
     state.manage.classDetailTab = button.dataset.classDetailTab;
-    renderManage();
+    renderManage({ skipFetch: true });
   }));
   document.querySelector("#createClass")?.addEventListener("click", createClass);
   document.querySelector("#classCategory")?.addEventListener("change", updateClassLevelVisibility);
@@ -2021,7 +2027,7 @@ function addBuilderQuestion(type) {
   if (type === "completion") Object.assign(base, completionQuestionTemplate(id));
   if (type === "program") Object.assign(base, { title: "", statement: "", input: "", output: "", samples: [], tests: [] });
   state.manage.editPaper.questions.push(base);
-  renderManage();
+  renderManage({ skipFetch: true });
 }
 
 function addSubQuestion(parentIndex, type) {
@@ -2030,7 +2036,7 @@ function addSubQuestion(parentIndex, type) {
   if (!parent || !isCompositeType(parent.type)) return;
   parent.subquestions ||= [];
   parent.subquestions.push(objectiveQuestionTemplate(type, `s${parent.subquestions.length + 1}`));
-  renderManage();
+  renderManage({ skipFetch: true });
 }
 
 function removeSubQuestion(parentIndex, subIndex) {
@@ -2038,13 +2044,13 @@ function removeSubQuestion(parentIndex, subIndex) {
   const parent = state.manage.editPaper.questions[parentIndex];
   if (!parent?.subquestions) return;
   parent.subquestions.splice(subIndex, 1);
-  renderManage();
+  renderManage({ skipFetch: true });
 }
 
 function removeBuilderQuestion(index) {
   syncBuilderState();
   state.manage.editPaper.questions.splice(index, 1);
-  renderManage();
+  renderManage({ skipFetch: true });
 }
 
 function objectiveQuestionTemplate(type, id) {
@@ -2104,20 +2110,20 @@ function samplePaper(id = nextPaperId()) {
 
 function showPaperList() {
   state.manage.paperView = "list";
-  renderManage();
+  renderManage({ skipFetch: true });
 }
 
 function createNewPaper() {
   state.manage.editPaper = samplePaper();
   state.manage.paperView = "editor";
-  renderManage();
+  renderManage({ skipFetch: true });
 }
 
 function loadPaperIntoEditor(id) {
   const paper = state.manage.papers.find((item) => item.id === id) || samplePaper();
   state.manage.editPaper = JSON.parse(JSON.stringify(paper));
   state.manage.paperView = "editor";
-  renderManage();
+  renderManage({ skipFetch: true });
 }
 
 async function savePaperFromEditor() {

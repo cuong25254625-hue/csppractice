@@ -1885,7 +1885,7 @@ function readTaggedBlock(lines, startIndex, stopLabels) {
   let index = startIndex;
   while (index < lines.length) {
     const line = lines[index];
-    if (/^---\s*(题目|子题)\s+\d+\s*---$/.test(line) || /^===\s*下一套试卷\s*===$/.test(line) || stopLabels.some((label) => line.startsWith(`${label}:`))) break;
+    if (/^\s*---\s*(题目|子题)\s+\d+\s*---$/.test(line) || /^\s*===\s*下一套试卷\s*===$/.test(line) || stopLabels.some((label) => line.trimStart().startsWith(`${label}:`))) break;
     values.push(line);
     index += 1;
   }
@@ -1893,30 +1893,30 @@ function readTaggedBlock(lines, startIndex, stopLabels) {
 }
 
 function lineValue(line, label) {
-  return line.startsWith(`${label}:`) ? line.slice(label.length + 1).trim() : "";
+  return line.trimStart().startsWith(`${label}:`) ? line.trimStart().slice(label.length + 1).trim() : "";
 }
 
 function parseWordPapersText(text, db) {
-  const lines = String(text || "").replace(/\r/g, "").split("\n").map((line) => line.trim()).filter((line) => line.length);
+  const lines = String(text || "").replace(/\r/g, "").split("\n").filter((line) => line.trim().length);
   const papers = [];
   let current = null;
   const topLabels = ["试卷ID", "标题", "考试类型", "等级", "语言", "年份", "月份", "说明"];
   const questionLabels = ["题型", "题目ID", "分值", "标题", "题干", "选项", "答案", "解析", "题面", "程序代码", "输入格式", "输出格式", "样例", "隐藏测试点"];
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
-    if (line.startsWith("试卷ID:")) {
+    if (line.trimStart().startsWith("试卷ID:")) {
       if (current) papers.push(current);
       current = { id: lineValue(line, "试卷ID"), questions: [] };
       continue;
     }
     if (!current) continue;
-    const topLabel = topLabels.find((label) => line.startsWith(`${label}:`));
+    const topLabel = topLabels.find((label) => line.trimStart().startsWith(`${label}:`));
     if (topLabel) {
       const keyMap = { 标题: "title", 考试类型: "category", 等级: "level", 语言: "language", 年份: "year", 月份: "month", 说明: "summary" };
       if (keyMap[topLabel]) current[keyMap[topLabel]] = lineValue(line, topLabel);
       continue;
     }
-    if (/^---\s*题目\s+\d+\s*---$/.test(line)) {
+    if (/^\s*---\s*题目\s+\d+\s*---$/.test(line)) {
       const parsed = parseWordQuestion(lines, i + 1, false, questionLabels);
       current.questions.push(parsed.question);
       i = parsed.nextIndex - 1;
@@ -1931,48 +1931,48 @@ function parseWordQuestion(lines, startIndex, subquestion, questionLabels) {
   let i = startIndex;
   while (i < lines.length) {
     const line = lines[i];
-    if (/^---\s*题目\s+\d+\s*---$/.test(line) || /^===\s*下一套试卷\s*===$/.test(line)) break;
-    if (subquestion && /^---\s*子题\s+\d+\s*---$/.test(line)) break;
-    if (line.startsWith("题型:")) question.type = labelQuestionTypes[lineValue(line, "题型")] || lineValue(line, "题型") || "single";
-    else if (line.startsWith("题目ID:")) question.id = lineValue(line, "题目ID");
-    else if (line.startsWith("分值:")) question.score = Number(lineValue(line, "分值") || 0);
-    else if (line.startsWith("标题:")) question.title = lineValue(line, "标题");
-    else if (line.startsWith("题干:")) {
+    if (/^\s*---\s*题目\s+\d+\s*---$/.test(line) || /^\s*===\s*下一套试卷\s*===$/.test(line)) break;
+    if (subquestion && /^\s*---\s*子题\s+\d+\s*---$/.test(line)) break;
+    if (line.trimStart().startsWith("题型:")) question.type = labelQuestionTypes[lineValue(line, "题型")] || lineValue(line, "题型") || "single";
+    else if (line.trimStart().startsWith("题目ID:")) question.id = lineValue(line, "题目ID");
+    else if (line.trimStart().startsWith("分值:")) question.score = Number(lineValue(line, "分值") || 0);
+    else if (line.trimStart().startsWith("标题:")) question.title = lineValue(line, "标题");
+    else if (line.trimStart().startsWith("题干:")) {
       const block = readTaggedBlock(lines, i + 1, questionLabels);
       question.stem = block.value;
       i = block.nextIndex - 1;
-    } else if (line.startsWith("题面:")) {
+    } else if (line.trimStart().startsWith("题面:")) {
       const block = readTaggedBlock(lines, i + 1, questionLabels);
       question.statement = block.value;
       i = block.nextIndex - 1;
-    } else if (line.startsWith("程序代码:")) {
+    } else if (line.trimStart().startsWith("程序代码:")) {
       const block = readTaggedBlock(lines, i + 1, questionLabels);
       question.code = block.value;
       i = block.nextIndex - 1;
-    } else if (line.startsWith("输入格式:")) {
+    } else if (line.trimStart().startsWith("输入格式:")) {
       const block = readTaggedBlock(lines, i + 1, questionLabels);
       question.input = block.value;
       i = block.nextIndex - 1;
-    } else if (line.startsWith("输出格式:")) {
+    } else if (line.trimStart().startsWith("输出格式:")) {
       const block = readTaggedBlock(lines, i + 1, questionLabels);
       question.output = block.value;
       i = block.nextIndex - 1;
-    } else if (line.startsWith("解析:")) {
+    } else if (line.trimStart().startsWith("解析:")) {
       const block = readTaggedBlock(lines, i + 1, questionLabels);
       question.explanation = block.value;
       i = block.nextIndex - 1;
-    } else if (line.startsWith("选项:")) {
+    } else if (line.trimStart().startsWith("选项:")) {
       const choices = [];
       i += 1;
-      while (i < lines.length && /^[A-Z]\.\s*/.test(lines[i])) {
-        choices.push(lines[i].replace(/^[A-Z]\.\s*/, ""));
+      while (i < lines.length && /^\s*[A-Z]\.\s*/.test(lines[i])) {
+        choices.push(lines[i].trimStart().replace(/^\s*[A-Z]\.\s*/, ""));
         i += 1;
       }
       question.choices = choices;
       i -= 1;
-    } else if (line.startsWith("答案:")) {
+    } else if (line.trimStart().startsWith("答案:")) {
       question.answer = parseWordAnswer(question.type || "single", lineValue(line, "答案"));
-    } else if (/^---\s*子题\s+\d+\s*---$/.test(line)) {
+    } else if (/^\s*---\s*子题\s+\d+\s*---$/.test(line)) {
       question.subquestions ||= [];
       const parsed = parseWordQuestion(lines, i + 1, true, questionLabels);
       question.subquestions.push(parsed.question);

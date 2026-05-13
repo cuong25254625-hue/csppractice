@@ -1,5 +1,622 @@
 [
   {
+    "id": "csp-j1-202509",
+    "title": "2025 CCF CSP-J 第一轮（入门级）C++语言试题",
+    "category": "cspj",
+    "level": null,
+    "language": "C++",
+    "year": 2025,
+    "month": "09",
+    "participants": 0,
+    "views": 0,
+    "hidden": false,
+    "summary": "认证时间：2025年9月20日09:30~11:30。满分100分，涵盖单项选择题、阅读程序和完善程序三大题型。",
+    "questions": [
+      {
+        "type": "single",
+        "id": "csp-j1-01",
+        "score": 2,
+        "stem": "一个32位无符号整数可以表示的最大值，最接近下列哪个选项？（ ）",
+        "choices": [
+          "4×10⁹",
+          "2×10⁹",
+          "8×10⁹",
+          "1×10⁹"
+        ],
+        "answer": 0,
+        "explanation": ""
+      },
+      {
+        "type": "single",
+        "id": "csp-j1-02",
+        "score": 2,
+        "stem": "在C++中，执行 int x=255; cout<<(x&(x-1)); 后，输出的结果是？（ ）",
+        "choices": [
+          "255",
+          "254",
+          "128",
+          "0"
+        ],
+        "answer": 1,
+        "explanation": ""
+      },
+      {
+        "type": "single",
+        "id": "csp-j1-03",
+        "score": 2,
+        "stem": "函数calc(n)的定义如下，则calc(5)的返回值是多少？（ ）\n```cpp\nint calc(int n){\nif(n<=1) return 1;\nif(n%2==0) return calc(n/2)+1;\nelse return calc(n-1)+calc(n-2);\n}\n```",
+        "choices": [
+          "5",
+          "6",
+          "7",
+          "8"
+        ],
+        "answer": 1,
+        "explanation": ""
+      },
+      {
+        "type": "single",
+        "id": "csp-j1-04",
+        "score": 2,
+        "stem": "用5个权值10、12、15、20、25构造哈夫曼树，该树的带权路径长度是多少？（ ）",
+        "choices": [
+          "176",
+          "186",
+          "196",
+          "206"
+        ],
+        "answer": 1,
+        "explanation": ""
+      },
+      {
+        "type": "single",
+        "id": "csp-j1-05",
+        "score": 2,
+        "stem": "在一个有向图中，所有顶点的入度之和等于所有顶点的出度之和，这个总和等于？（ ）",
+        "choices": [
+          "顶点数",
+          "边数",
+          "顶点数+边数",
+          "顶点数×2"
+        ],
+        "answer": 1,
+        "explanation": ""
+      },
+      {
+        "type": "single",
+        "id": "csp-j1-06",
+        "score": 2,
+        "stem": "从5位男生和4位女生中选出4人组成一个学习小组，要求学习小组中男生和女生都有。有多少种不同的选举方法？（ ）",
+        "choices": [
+          "126",
+          "121",
+          "120",
+          "100"
+        ],
+        "answer": 2,
+        "explanation": ""
+      },
+      {
+        "type": "single",
+        "id": "csp-j1-07",
+        "score": 2,
+        "stem": "假设a、b、c都是布尔变量，逻辑表达式 (a&&b)||(!c&&a) 的值与下列哪个表达式不始终相等？（ ）",
+        "choices": [
+          "a&&(b||!c)",
+          "(a||!c)&&(b||!c)&&(a||a)",
+          "a&&(!b||c)",
+          "!(!a||!b)||(a&&!c)"
+        ],
+        "answer": 2,
+        "explanation": ""
+      },
+      {
+        "type": "single",
+        "id": "csp-j1-08",
+        "score": 2,
+        "stem": "已知 f[0]=1，f[1]=1 并且对于所有 n≥2 有 f[n]=(f[n-1]+f[n-2])%7，那么 f[2025] 的值是多少？（ ）",
+        "choices": [
+          "2",
+          "4",
+          "5",
+          "6"
+        ],
+        "answer": 3,
+        "explanation": ""
+      },
+      {
+        "type": "single",
+        "id": "csp-j1-09",
+        "score": 2,
+        "stem": "下列关于C++ string类的说法，正确的是？（ ）",
+        "choices": [
+          "string对象的长度在创建后不能改变。",
+          "可以使用+运算符直接连接一个string对象和一个char类型的字符。",
+          "string的length()和size()方法返回的值可能不同。",
+          "string对象必须以'\\0'结尾，且这个结尾符计入length()。"
+        ],
+        "answer": 1,
+        "explanation": ""
+      },
+      {
+        "type": "single",
+        "id": "csp-j1-10",
+        "score": 2,
+        "stem": "考虑以下C++函数，在main函数调用solve后，x和y的值分别是？（ ）\n```cpp\nvoid solve(int &a, int b){\na = a + b;\nb = a - b;\na = a - b;\n}\nint main(){\nint x=5, y=10;\nsolve(x, y);\n}\n```",
+        "choices": [
+          "5，10",
+          "10，5",
+          "10，10",
+          "5，5"
+        ],
+        "answer": 2,
+        "explanation": ""
+      },
+      {
+        "type": "single",
+        "id": "csp-j1-11",
+        "score": 2,
+        "stem": "一个8×8的棋盘，左上角坐标为(1,1)，右下角为(8,8)。一个机器人从(1,1)出发，每次只能向右或向下走一格。要到达(4,5)，有多少种不同的路径？（ ）",
+        "choices": [
+          "20",
+          "35",
+          "56",
+          "70"
+        ],
+        "answer": 1,
+        "explanation": ""
+      },
+      {
+        "type": "single",
+        "id": "csp-j1-12",
+        "score": 2,
+        "stem": "某同学用冒泡排序对数组{6,1,5,2,4}进行升序排序，请问需要进行多少次元素交换？（ ）",
+        "choices": [
+          "5",
+          "6",
+          "7",
+          "8"
+        ],
+        "answer": 1,
+        "explanation": ""
+      },
+      {
+        "type": "single",
+        "id": "csp-j1-13",
+        "score": 2,
+        "stem": "十进制数 720 和八进制数 270 的和用十六进制表示是多少？（ ）",
+        "choices": [
+          "388",
+          "2A8",
+          "3A0",
+          "380"
+        ],
+        "answer": 0,
+        "explanation": ""
+      },
+      {
+        "type": "single",
+        "id": "csp-j1-14",
+        "score": 2,
+        "stem": "一棵包含1000个结点的完全二叉树，其叶子结点的数量是多少？（ ）",
+        "choices": [
+          "499",
+          "512",
+          "500",
+          "501"
+        ],
+        "answer": 2,
+        "explanation": ""
+      },
+      {
+        "type": "single",
+        "id": "csp-j1-15",
+        "score": 2,
+        "stem": "给定一个初始为空的整数栈S和一个空的队列P。按顺序处理输入的整数队列A：7、5、8、3、1、4、2。处理规则：①若该数是奇数，压入栈S；②若该数是偶数且栈S非空，弹出栈顶元素加入队列P；③若该数是偶数且栈S为空，不操作。当队列A处理完毕后，队列P的内容是什么？（ ）",
+        "choices": [
+          "5，1，3",
+          "7，5，3",
+          "3，1，5",
+          "5，1，3，7"
+        ],
+        "answer": 0,
+        "explanation": ""
+      },
+      {
+        "type": "reading",
+        "id": "csp-reading-1",
+        "score": 13,
+        "title": "阅读程序",
+        "statement": "阅读下面程序并回答问题。程序功能：统计1~n中所有三元组(i,j,k)满足i<j<k且两两互质的数量。",
+        "code": "#include <cstdio>\n#include <cstring>\n#include <algorithm>\ninline int gcd(int a, int b){\nif(b==0)\nreturn a;\nreturn gcd(b, a%b);\n}\nint main(){\nint n;\nscanf(\"%d\", &n);\nint ans=0;\nfor (int i=1; i<=n; ++i){\nfor(int j=i+1; j<=n; ++j){\nfor(int k=j+1; k<=n; ++k){\nif(gcd(i,j)==1 && gcd(j,k)==1\n&& gcd(i,k)==1){\n++ans;\n}\n}\n}\n}\nprintf(\"%d\\n\", ans);\nreturn 0;\n}",
+        "subquestions": [
+          {
+            "type": "judge",
+            "id": "csp-j1-16",
+            "score": 1,
+            "stem": "当输入为2时，程序并不会执行第16行的判断语句。（ ）",
+            "answer": true,
+            "explanation": ""
+          },
+          {
+            "type": "judge",
+            "id": "csp-j1-17",
+            "score": 1.5,
+            "stem": "将第16行中的\"&& gcd(i, k)==1\"删去不会影响程序运行结果。（ ）",
+            "answer": false,
+            "explanation": ""
+          },
+          {
+            "type": "judge",
+            "id": "csp-j1-18",
+            "score": 1.5,
+            "stem": "当输入的 n≥3 的时候，程序总是输出一个正整数。（ ）",
+            "answer": true,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-19",
+            "score": 3,
+            "stem": "将第7行的gcd(b,a%b)改为gcd(a,a%b)后，程序可能出现的问题是（ ）。",
+            "choices": [
+              "输出的答案大于原答案。",
+              "输出的答案小于原答案。",
+              "程序有可能陷入死循环。",
+              "可能发生整型溢出问题。"
+            ],
+            "answer": 2,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-20",
+            "score": 3,
+            "stem": "当输入为8的时候，输出为（ ）。",
+            "choices": [
+              "37",
+              "42",
+              "35",
+              "25"
+            ],
+            "answer": 3,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-21",
+            "score": 3,
+            "stem": "调用gcd(36,42)会返回（ ）。",
+            "choices": [
+              "6",
+              "252",
+              "3",
+              "2"
+            ],
+            "answer": 0,
+            "explanation": ""
+          }
+        ]
+      },
+      {
+        "type": "reading",
+        "id": "csp-reading-2",
+        "score": 13.5,
+        "title": "阅读程序",
+        "statement": "阅读下面程序并回答问题。程序功能：对数组排序去重后，通过双指针统计最长不超过k的子序列数量。",
+        "code": "#include <algorithm>\n#include <cstdio>\n#include <cstring>\n#define ll long long\nint n, k;\nint a[200007];\nint ans[200007];\nint main(){\nscanf(\"%d%d\", &n, &k);\nfor (int i=1; i<=n; ++i){\nscanf(\"%d\", &a[i]);\n}\nstd::sort(a+1, a+n+1);\nn = std::unique(a+1, a+n+1) - a - 1;\nfor(int i=1, j=0; i<=n; ++i){\nfor(; j<i && a[i]-a[j+1]>k; ++j)\n;\nans[i] = ans[j] + 1;\n}\nprintf(\"%d\\n\", ans[n]);\nreturn 0;\n}",
+        "subquestions": [
+          {
+            "type": "judge",
+            "id": "csp-j1-22",
+            "score": 1.5,
+            "stem": "当输入为\"3 1 3 2 1\"时，输出结果为2。（ ）",
+            "answer": true,
+            "explanation": ""
+          },
+          {
+            "type": "judge",
+            "id": "csp-j1-23",
+            "score": 1.5,
+            "stem": "假设输入的n为正整数，输出的答案一定小于等于n，大于等于1。（ ）",
+            "answer": true,
+            "explanation": ""
+          },
+          {
+            "type": "judge",
+            "id": "csp-j1-24",
+            "score": 1.5,
+            "stem": "将第14行的 n=std::unique(a+1,a+n+1)-a-1; 删去后，有可能出现与原本代码不同的输出结果。（ ）",
+            "answer": true,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-25",
+            "score": 3,
+            "stem": "假设输入的a数组和k均为正整数，执行第18行代码时，一定满足的条件不包括（ ）。",
+            "choices": [
+              "a[i]-a[j+1]≤k",
+              "a[i]-a[j]>k",
+              "j<i",
+              "j≥0"
+            ],
+            "answer": 1,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-26",
+            "score": 3,
+            "stem": "当输入的 n=100、k=2、a={1,2,3,…,100} 时，输出为（ ）。",
+            "choices": [
+              "34",
+              "100",
+              "50",
+              "33"
+            ],
+            "answer": 0,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-27",
+            "score": 3,
+            "stem": "假设输入的a数组和k均为正整数，但a数组不一定有序，若误删去第13行的std::sort(a+1,a+n+1);，程序有可能出现的问题有（ ）。",
+            "choices": [
+              "输出的答案比原本答案更大",
+              "输出的答案比原本答案更小",
+              "出现死循环行为",
+              "以上均可能发生"
+            ],
+            "answer": 0,
+            "explanation": ""
+          }
+        ]
+      },
+      {
+        "type": "reading",
+        "id": "csp-reading-3",
+        "score": 13.5,
+        "title": "阅读程序",
+        "statement": "阅读下面程序并回答问题。程序功能：使用动态规划求解两个数组的最长公共子序列(LCS)。",
+        "code": "#include <algorithm>\n#include <cstdio>\n#include <cstring>\n#define ll long long\nint f[5007][5007];\nint a[5007], b[5007];\nint n;\nint main(){\nscanf(\"%d\", &n);\nfor (int i=1; i<=n; ++i){\nscanf(\"%d\", &a[i]);\n}\nfor(int i=1; i<=n; ++i){\nscanf(\"%d\", &b[i]);\n}\nfor(int i=1; i<=n; ++i){\nfor(int j=1; j<=n; ++j){\nf[i][j] = std::max(f[i-1][j],\nstd::max(f[i-1][j],f[i][j-1]));\nif(a[i]==b[j]){\nf[i][j] = std::max(f[i][j],\nf[i-1][j-1]+1);\n}\n}\n}\nprintf(\"%d\\n\", f[n][n]);\nreturn 0;\n}",
+        "subquestions": [
+          {
+            "type": "judge",
+            "id": "csp-j1-28",
+            "score": 1.5,
+            "stem": "当输入\"4 1 2 3 4 1 3 2 2\"时，输出为2。（ ）",
+            "answer": false,
+            "explanation": ""
+          },
+          {
+            "type": "judge",
+            "id": "csp-j1-29",
+            "score": 1.5,
+            "stem": "当程序运行完毕后，对于所有的 i,j，都一定有 f[i][j] ≤ f[n][n]。（ ）",
+            "answer": true,
+            "explanation": ""
+          },
+          {
+            "type": "judge",
+            "id": "csp-j1-30",
+            "score": 1.5,
+            "stem": "将第18行的 f[i][j]=std::max(f[i-1][j],std::max(f[i-1][j],f[i][j-1])); 删去后，并不影响程序运行结果。（ ）",
+            "answer": false,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-31",
+            "score": 3,
+            "stem": "输出的答案满足的性质有（ ）。",
+            "choices": [
+              "小于等于n",
+              "大于等于0",
+              "不一定大于等于1",
+              "以上均是"
+            ],
+            "answer": 3,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-32",
+            "score": 3,
+            "stem": "如果在16行的循环前加上以下两行：std::sort(a+1,a+n+1); std::sort(b+1,b+n+1)，则答案会（ ）。",
+            "choices": [
+              "变大或不变",
+              "变小或不变",
+              "一定变大",
+              "不变"
+            ],
+            "answer": 0,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-33",
+            "score": 3,
+            "stem": "如果输入的 a={1,2,...,n}，而且b数组中数字均为1~n中的正整数，则上述代码等价于下面哪个问题：（ ）。",
+            "choices": [
+              "求b数组去重后的长度",
+              "求b数组的最长上升子序列",
+              "求b数组的长度",
+              "求b数组的最大值"
+            ],
+            "answer": 1,
+            "explanation": ""
+          }
+        ]
+      },
+      {
+        "type": "completion",
+        "id": "csp-complete-1",
+        "score": 15,
+        "title": "完善程序",
+        "statement": "阅读题目说明和程序，选择各空应填内容。\"行程长度编码\"(Run-Length Encoding)是一种无损压缩算法，常用于压缩重复字符较多的数据。假设原始字符串不包含数字字符，压缩规则如下：①如果原始字符串中一个字符连续出现N次（N≥2），在压缩字符串中表示为\"字符+数字N\"。②如果原始字符串中一个字符只出现1次，在压缩字符串中表示为该字符本身。以下程序实现读取压缩字符串并输出其原始的、解压后的形式。",
+        "code": "#include <cctype>\n#include <iostream>\n#include <string>\nusing namespace std;\nint main(){\nstring z;\ncin >> z;\nstring s = \"\";\nfor (int i=0; i<z.length(); ){\nchar ch = z[i];\nif( ① && isdigit(z[i+1])){\ni++;\nint count=0;\nwhile (i<z.length() && isdigit(z[i])){\ncount = ②;\ni++;\n}\nfor (int j=0; j<③; ++j){\ns += ch;\n}\n}else{\ns += ④;\n⑤;\n}\n}\ncout << s << endl;\nreturn 0;\n}",
+        "subquestions": [
+          {
+            "type": "single",
+            "id": "csp-j1-34",
+            "score": 3,
+            "stem": "①处应填（ ）",
+            "choices": [
+              "isalpha(z[i])",
+              "isdigit(z[i])",
+              "i+1 < z.length()",
+              "isdigit(z[i])"
+            ],
+            "answer": 2,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-35",
+            "score": 3,
+            "stem": "②处应填（ ）",
+            "choices": [
+              "count + (z[i]-'0')",
+              "count * 10 + (z[i]-'0')",
+              "z[i]-'0'",
+              "count+1"
+            ],
+            "answer": 1,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-36",
+            "score": 3,
+            "stem": "③处应填（ ）",
+            "choices": [
+              "count-1",
+              "count",
+              "10",
+              "z[i]-'8'"
+            ],
+            "answer": 1,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-37",
+            "score": 3,
+            "stem": "④处应填（ ）",
+            "choices": [
+              "z[i+1]",
+              "ch",
+              "z.back()",
+              "(char)z[i]+1"
+            ],
+            "answer": 1,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-38",
+            "score": 3,
+            "stem": "⑤处应填（ ）",
+            "choices": [
+              "i--",
+              "i = i+2",
+              "i++",
+              "//不执行任何操作"
+            ],
+            "answer": 2,
+            "explanation": ""
+          }
+        ]
+      },
+      {
+        "type": "completion",
+        "id": "csp-complete-2",
+        "score": 15,
+        "title": "完善程序",
+        "statement": "阅读题目说明和程序，选择各空应填内容。有N个人，分为两类：①精明人（永远正确判断他人）；②糊涂人（判断不可靠）。已知精明人严格占据多数（k > N/2）。你只能通过函数query(i,j)让第i个人判断第j个人：返回true表示判断结果为\"精明人\"；返回false表示判断结果为\"糊涂人\"。目标是通过互相判断，找出至少一个百分之百能确定的精明人。以下程序利用\"精明人占多数\"的优势，通过\"消除\"过程让人们互相判断并抵消，最终留下的候选者必然属于多数派（精明人）。",
+        "code": "#include <iostream>\n#include <vector>\nusing namespace std;\nint N;\nbool query(int i, int j);\nint main(){\ncin >> N;\nint candidate = 0;\nint count = ①;\nfor(int i=1; i<N; ++i){\nif(②){\ncandidate = i;\ncount = 1;\n}else{\nif(③){\n④;\n}else{\ncount++;\n}\n}\n}\ncout << ⑤ << endl;\nreturn 0;\n}",
+        "subquestions": [
+          {
+            "type": "single",
+            "id": "csp-j1-39",
+            "score": 3,
+            "stem": "①处应填（ ）",
+            "choices": [
+              "0",
+              "1",
+              "N",
+              "-1"
+            ],
+            "answer": 1,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-40",
+            "score": 3,
+            "stem": "②处应填（ ）",
+            "choices": [
+              "count < 0",
+              "count == 1",
+              "count == 0",
+              "query(candidate, i) == false"
+            ],
+            "answer": 3,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-41",
+            "score": 3,
+            "stem": "③处应填（ ）",
+            "choices": [
+              "query(candidate,i)==false",
+              "query(i,candidate)==true",
+              "query(candidate,i)==false && query(i,candidate)==false",
+              "query(candidate,i)==false || query(i,candidate)==false"
+            ],
+            "answer": 0,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-42",
+            "score": 3,
+            "stem": "④处应填（ ）",
+            "choices": [
+              "count--",
+              "break",
+              "count++",
+              "candidate=i"
+            ],
+            "answer": 0,
+            "explanation": ""
+          },
+          {
+            "type": "single",
+            "id": "csp-j1-43",
+            "score": 3,
+            "stem": "⑤处应填（ ）",
+            "choices": [
+              "N-1",
+              "count",
+              "candidate",
+              "0"
+            ],
+            "answer": 2,
+            "explanation": ""
+          }
+        ]
+      }
+    ],
+    "createdBy": "f851e81e-2471-46e5-8e2a-0fcc4522afe1",
+    "createdAt": "2026-05-13T02:52:46.739Z",
+    "updatedBy": "f851e81e-2471-46e5-8e2a-0fcc4522afe1",
+    "updatedAt": "2026-05-13T02:52:46.739Z"
+  },
+  {
     "id": "cpp-level-1-202603",
     "title": "GESP C++ 一级 2026年03月真题",
     "category": "gesp",
@@ -13,314 +630,314 @@
     "summary": "变量、表达式、输入输出和基础判断。",
     "questions": [
       {
-        "type": "single",
         "id": "l1-s1",
+        "type": "single",
         "score": 2,
-        "stem": "2026年春节联欢晚会上一个武术表演节目《武 BOT》。节目中多个人形机器人会表演空翻，它们落地可能会有微微踉跄，但都会迅速调整姿态站稳，并适当移动来和前后左右的其他机器人保持原来队列。如果将机器人视作一个计算机系统，那么在该计算机系统中下面哪一项不能作为输入设备（ ）。",
+        "stem": "2026年春节联欢晚会上一个武术表演节目《武 BOT》。节目中多个人形机器人会表演空翻，它们落地可能会有微微踉跄，但都会迅速调整姿态站稳，并适当移动来和前后左右的其他机器人保持原来队列。如果将机器人视作一个计算机系统，那么在该计算机系统中下面哪一项不能作为输入设备（ ）10 * 4 % 6 和 10 * 2 % 3",
+        "explanation": "",
         "choices": [
           "检测重心的重力传感器",
           "预装的AI算法程序",
           "接收动作指令的遥控器",
           "拍摄其他机器人的摄像头"
         ],
-        "answer": 1,
-        "explanation": ""
+        "answer": 1
       },
       {
-        "type": "single",
         "id": "l1-s2",
+        "type": "single",
         "score": 2,
         "stem": "小明学习编程有一段时间了，他想在图形环境下把当前目录（或文件夹）下的文本文件 20260314.txt 的名字改一下。他用鼠标左键点击选中该文件后，立即完成下面哪个操作后将处于输入新文件名的状态（ ）：",
+        "explanation": "",
         "choices": [
           "单击右键并选择弹出菜单中的\"重命名\"",
           "双击左键",
           "按功能键 F1",
           "按回车键"
         ],
-        "answer": 0,
-        "explanation": ""
+        "answer": 0
       },
       {
-        "type": "single",
         "id": "l1-s3",
+        "type": "single",
         "score": 2,
         "stem": "下面C++代码可以执行，有关说法正确的是（ ）。\ndouble PI = 3.1415926;\ncout << (PI);",
+        "explanation": "",
         "choices": [
           "为了方便初学者，cout << (PI) 和 cout << (pi) 效果相同，即变量的大小写不敏感",
           "cout << (PI) 修改为 cout << (Pi) 能正常执行",
           "不能用 PI 做变量名，因为要保存圆周率这个常量",
           "将程序中全部 PI 都改写为 Pai，将能正常执行，不会报错"
         ],
-        "answer": 3,
-        "explanation": ""
+        "answer": 3
       },
       {
-        "type": "single",
         "id": "l1-s4",
+        "type": "single",
         "score": 2,
         "stem": "C++表达式 3 * 3 % 2 的值为（ ）。",
+        "explanation": "",
         "choices": [
           "81",
           "27",
           "4",
           "1"
         ],
-        "answer": 3,
-        "explanation": ""
+        "answer": 3
       },
       {
-        "type": "single",
         "id": "l1-s5",
+        "type": "single",
         "score": 2,
         "stem": "整型变量 a、b 的初值都是 4，则下面的C++代码执行后的输出是（ ）。\na, b = 3, 4;\ncout << (a + 2) << (b - 2) << endl;\ncout << a << b << endl;",
+        "explanation": "",
         "choices": [
           "输出 61 和 43",
           "输出 52 和 34",
           "输出 62 和 44",
           "输出 62 和 32"
         ],
-        "answer": 0,
-        "explanation": ""
+        "answer": 0
       },
       {
-        "type": "single",
         "id": "l1-s6",
+        "type": "single",
         "score": 2,
         "stem": "下面C++代码的相关说法，正确的是（ ）。\nint N = 0;\ncin >> N;\ncout << (N);",
+        "explanation": "",
         "choices": [
           "执行时如输入 10，则将输出 10",
           "执行时如输入 3.14，将报错",
           "执行时如输入 ABC，将报错",
           "执行时如输入 -10，将报错"
         ],
-        "answer": 0,
-        "explanation": ""
+        "answer": 0
       },
       {
-        "type": "single",
         "id": "l1-s7",
+        "type": "single",
         "score": 2,
         "stem": "下面C++代码执行时，其说法正确的是（ ）。\nint M = 0, N = 0;\ncin >> M;\ncin >> N;\nif (N > M)\ncout << (N - M);\nelse\ncout << (M - N);",
+        "explanation": "",
         "choices": [
           "如果输入一个正数和一个负数，其输出结果肯定是大于0",
           "不管是负整数、正整数亦或0，其结果肯定是大于等于0",
           "如果 N 和 M 是相等的整数，将不会有输出",
           "如果 N 和 M 输入带有小数点的数，将按整数部分计算"
         ],
-        "answer": 1,
-        "explanation": ""
+        "answer": 1
       },
       {
-        "type": "single",
         "id": "l1-s8",
+        "type": "single",
         "score": 2,
         "stem": "下面C++代码执行后的输出是（ ）。\nint i, tnt = 1;\nfor (i = 0; i < 5; i++)\ntnt *= i;\nprintf(\"%2d%2d\\n\", tnt, i);",
+        "explanation": "",
         "choices": [
           "24 5",
           "10 5",
           "0 4",
           "0 5"
         ],
-        "answer": 3,
-        "explanation": ""
+        "answer": 3
       },
       {
-        "type": "single",
         "id": "l1-s9",
+        "type": "single",
         "score": 2,
         "stem": "执行下面C++代码段求序列 -1+2+3-4+5+6-7+8+9-10+11+12...... 之值。例如输入 4，则计算序列前4项的值，规律如序列所示，输出为 0。下面说法中正确的是（ ）。\nint N, tnt, i;\ncout << \"请输入正整数：\";\ncin >> N;\ntnt = 0;\nfor (i = 1; i < N + 1; i++) // L1\nif (i % 3 == 1)         // L2\ntnt += -i;\nelse\ntnt += i;\ncout << tnt;",
+        "explanation": "",
         "choices": [
           "L1行中 i < N + 1 应该修为 i < N 才会符合预期",
           "L2行中 i % 3 == 1 应修改为 i % 3 == 0 才会符合预期",
           "L2行中 i % 3 == 1 修改为 i % 3 与当前程序效果相同",
           "当前代码能实现题目所描述计算目标"
         ],
-        "answer": 3,
-        "explanation": ""
+        "answer": 3
       },
       {
-        "type": "single",
         "id": "l1-s10",
+        "type": "single",
         "score": 2,
         "stem": "下面C++代码的相关说法，正确的是（ ）。\nint i;\nfor (i = 1; i < 10; i++){\nif (i % 2 == 0){\ncontinue; // L1\n}\nelse\ncout << i << \"#\";\n}\ncout << i << \"END\";",
+        "explanation": "",
         "choices": [
           "上述代码执行后，其输出是 1#3#5#7#9#9END",
           "删除 else 后的执行效果与当前代码相同",
           "删除 else 且将 cout << i << \"#\" 移入L1行下面，则执行效果与当前代码相同",
           "在 cout << i << \"END\" 前增加判断 if(i > 10)，其执行效果与当前代码相同"
         ],
-        "answer": 1,
-        "explanation": ""
+        "answer": 1
       },
       {
-        "type": "single",
         "id": "l1-s11",
+        "type": "single",
         "score": 2,
         "stem": "一个正整数的每位都是个位数，称为数位，最高位非0。下面的C++代码用于求正整数的所有数位之和，简称数位和。如 123 的各数位分别是1、2、3，则其数位和为1+2+3，结果为6。为实现该目标，横线处应该填写的代码是（ ）。\nint N;\ncin >> N;\nint tnt = 0;\nwhile (N != 0){\n____________;\n____________;\n}\ncout << \"N的数位和为：\" << tnt;",
+        "explanation": "",
         "choices": [
           "tnt += N / 10; N /= 10;",
           "tnt += N % 10; N /= 10;",
           "tnt += N / 10; N %= 10;",
           "tnt = tnt + N % 10; N %= 10;"
         ],
-        "answer": 1,
-        "explanation": ""
+        "answer": 1
       },
       {
-        "type": "single",
         "id": "l1-s12",
+        "type": "single",
         "score": 2,
         "stem": "小明想要快速知道任给一个正整数中有多少个奇数位(数位值是奇数)，下面的C++代码是其实现，横线处应该填入的代码是（ ）。\nint N;\ncin >> N;\nint odd_count = 0; // 记录奇数的个数\nint old_number = N; // 保存原数\nwhile (N != 0){\nif (_________________)\nodd_count += 1;\nN = (N - N % 10) / 10;\n}\ncout << old_number << \"中共有 \" << odd_count << \" 个奇数\";",
+        "explanation": "",
         "choices": [
           "N % 10 % 2 == 0",
           "N % 10 % 2 == 1",
           "N / 10 / 2 == 1",
           "N / 2 / 10 == 0"
         ],
-        "answer": 1,
-        "explanation": ""
+        "answer": 1
       },
       {
-        "type": "single",
         "id": "l1-s13",
+        "type": "single",
         "score": 2,
         "stem": "小明和弟弟在玩一个拼数字游戏，游戏规则是：二人各写一个两位正整数 M 和 N；然后将较大的数字放在较小的前面，拼成一个4位数；将这个4位数除以3的余数添加到4位数的后面，得到一个5位数；最后判断这个5位数能否被14整除。下面的C++代码用于判断 M 和 N 是否符合全部要求，如果符合则输出 Y 否则输出 N。例如输入 85 和 79，可以拼出 85792,恰好是14的倍数，则输出 Y。关于下面代码描述正确的是（ ）。\nint M, N, Q;\ncin >> M >> N;\nif(M > N) // L1\nQ = M*100+N;\nelse\nQ = N*100+M;\nif((Q*10+Q%3) % 14 == 0) // L2\ncout << \"Y\";\nelse\ncout << \"N\";",
+        "explanation": "",
         "choices": [
           "代码段不能完成正确判断",
           "L1行代码中条件应该改为 M <= N",
           "L2行代码应该改为 if ((Q*10+Q/3) % 14 == 0)",
           "代码段可以不使用变量 Q，而是在区分 M 和 N 大小后分别直接用它们来判断"
         ],
-        "answer": 3,
-        "explanation": ""
+        "answer": 3
       },
       {
-        "type": "single",
         "id": "l1-s14",
+        "type": "single",
         "score": 2,
         "stem": "执行下面C++代码可以判断一个6位正整数 N 的高3位和低3位的差是否是314的倍数。例如 628314 就符合要求。横线处应该填入（ ）。\ncin >> N;\nif (___________________________)\ncout << N << \"符合条件\" << endl;",
+        "explanation": "",
         "choices": [
           "((N % 1000) - (N / 1000)) / 314 == 0",
           "((N / 1000) - (N % 1000)) % 314 == 0",
           "((N % 1000) - (N / 1000)) / 314",
           "((N / 1000) - (N % 1000)) % 314"
         ],
-        "answer": 1,
-        "explanation": ""
+        "answer": 1
       },
       {
-        "type": "single",
         "id": "l1-s15",
+        "type": "single",
         "score": 2,
         "stem": "N 是一个正整数。如果 N 的所有奇数位的数位和等于所有偶数位的数位和，则称它是一个\"双螺旋数\"。例如 12375 的所有奇数位的数位和是9，同时它的所有偶数位的数位和也是9，则 12375 就是一个双螺旋数。下面的C++代码用于判断输入的 N 是否为双螺旋数。空白处应该填入的代码是（ ）。\nint i, N, N1=0, N2=0, N0;\ncin >> N;\nN0 = N;\nwhile (N){\n_________________________\n_________________________\n}\nif(N1 == N2)\ncout << N0 << \"是双螺旋数\" << endl;",
+        "explanation": "",
         "choices": [
           "N1 += N%10, N /= 10; N2 += N%10, N /= 10;",
           "N1 += N/10, N /= 10; N2 += N/10, N /= 10;",
           "N1 += N%10, N %= 10; N2 += N%10, N %= 10;",
           "N1 += N/10, N %= 10; N2 += N/10, N %= 10;"
         ],
-        "answer": 0,
-        "explanation": ""
+        "answer": 0
       },
       {
-        "type": "judge",
         "id": "l1-j1",
+        "type": "judge",
         "score": 2,
         "stem": "小明的妈妈最近刚刚给他买了一块电话手表，除了可以看时间，小明也可以用它和妈妈打电话、收发信息，那么可以推测这块手表中装有一款特定操作系统。",
-        "answer": true,
-        "explanation": ""
+        "explanation": "",
+        "answer": true
       },
       {
-        "type": "judge",
         "id": "l1-j2",
+        "type": "judge",
         "score": 2,
         "stem": "C++表达式 4 % 2 和 2 * 2 % 2 的结果相同。",
-        "answer": true,
-        "explanation": ""
+        "explanation": "",
+        "answer": true
       },
       {
-        "type": "judge",
         "id": "l1-j3",
+        "type": "judge",
         "score": 2,
         "stem": "下面C++代码段成功执行后将输出 0。\nfor (i = 1; i < 10; i++)\nif (i % 3 == 0)\nbreak;\ncout << i;",
-        "answer": false,
-        "explanation": ""
+        "explanation": "",
+        "answer": false
       },
       {
-        "type": "judge",
         "id": "l1-j4",
+        "type": "judge",
         "score": 2,
         "stem": "下面能够正常执行的C++代码段用于求1到N之和，N为正整数。因为 i < N + 1，所以是1到N且包含N之和。\ntnt = 0;\ncout << \"请输入正整数：\";\ncin >> N;\ntotal = 0;\nfor (i =1; i < N + 1; i++) ;\ntotal += i;\ncout << total;",
-        "answer": false,
-        "explanation": ""
+        "explanation": "",
+        "answer": false
       },
       {
-        "type": "judge",
         "id": "l1-j5",
+        "type": "judge",
         "score": 2,
         "stem": "执行下面的C++代码段，其语句 cout << (N) 将被执行0次或无数次（即死循环）。\ncin >> N;\nwhile (N)\ncout << (N);",
-        "answer": true,
-        "explanation": ""
+        "explanation": "",
+        "answer": true
       },
       {
-        "type": "judge",
         "id": "l1-j6",
+        "type": "judge",
         "score": 2,
         "stem": "下面的C++代码段的变量都是整型，它能用于判断输入的正整数是否为对称数。所谓对称数是指从左到右和从右到左读该数，其值相同。例如，121 和 414 都是对称数，而 123 不是对称数。（ ）\ncout << \"请输入正整数:\";\ncin >> n;\nold_number = n;\nnew_number = 0;\nwhile (n != 0){\nnew_number = new_number * 10 + n % 10;\nn /= 10;\n}\nif (old_number == new_number)\ncout << \"对称数\";\nelse\ncout << \"非对称数\";",
-        "answer": true,
-        "explanation": ""
+        "explanation": "",
+        "answer": true
       },
       {
-        "type": "judge",
         "id": "l1-j7",
+        "type": "judge",
         "score": 2,
         "stem": "执行下面的C++代码段，如果变量都为整型变量，输入为大于0的整数，则输出数值一定为 -N 的值。\ncin >> N;\ntotal = 0;\nfor (i = -N; i < N; i +=2)\ntotal += i;\ncout << total;",
-        "answer": true,
-        "explanation": ""
+        "explanation": "",
+        "answer": true
       },
       {
-        "type": "judge",
         "id": "l1-j8",
+        "type": "judge",
         "score": 2,
         "stem": "执行C++语句 printf(\"%d\\n\", 3.14) 将报错。",
-        "answer": false,
-        "explanation": ""
+        "explanation": "",
+        "answer": false
       },
       {
-        "type": "judge",
         "id": "l1-j9",
+        "type": "judge",
         "score": 2,
         "stem": "执行下面的C++代码后将输出 2500。\nint cnt = 0;\nfor (int i = 1; i < 100; i++)\ncnt += i++;\ncout << cnt;",
-        "answer": true,
-        "explanation": ""
+        "explanation": "",
+        "answer": true
       },
       {
-        "type": "judge",
         "id": "l1-j10",
+        "type": "judge",
         "score": 2,
         "stem": "小明在测试C++的 printf 的功能时执行了 printf(\"%-5d\\n\", 314)，则代码输出的结果是 -5314。",
-        "answer": false,
-        "explanation": ""
+        "explanation": "",
+        "answer": false
       },
       {
-        "type": "program",
         "id": "l1-p1",
+        "type": "program",
         "score": 25,
-        "input": "输入共 1 行，第 1 行包含 4 个整数 H1、H2、H3、H4，表示班上小朋友的身高。",
-        "output": "输出 1 行，包含一个整数，表示 Alice 想交的朋友的身高。\n样例1:\n输入:\n150 165 135 133\n输出:\n135\n样例解释:\n样例 1 中，Alice 身高为 150，第 2、3 个小朋友与 Alice 身高差距为 15，同样最接近，Alice 选较矮的一个即第 3 个身高为 135 的小朋友交朋友。\n数据范围:\n保证 H1、H2、H3、H4 互不相同。\n参考程序:\n#include <iostream>\nusing namespace std;\nint main() {\nint H1, H2, H3, H4;\ncin >> H1 >> H2 >> H3 >> H4;\nint ans = H2;\nint d = H1 - H2;\nif (d < 0) d = -d;\nint mnd = d;\nd = H1 - H3;\nif (d < 0) d = -d;\nif (d < mnd || (d == mnd && H3 < ans))\nans = H3, mnd = d;\nd = H1 - H4;\nif (d < 0) d = -d;\nif (d < mnd || (d == mnd && H4 < ans))\nans = H4;\ncout << ans << endl;\nreturn 0;\n}",
         "title": "",
         "statement": "",
+        "input": "输入共 1 行，第 1 行包含 4 个整数 H1、H2、H3、H4，表示班上小朋友的身高。",
+        "output": "输出 1 行，包含一个整数，表示 Alice 想交的朋友的身高。\n样例1:\n输入:\n150 165 135 133\n输出:\n135\n样例解释:\n样例 1 中，Alice 身高为 150，第 2、3 个小朋友与 Alice 身高差距为 15，同样最接近，Alice 选较矮的一个即第 3 个身高为 135 的小朋友交朋友。\n数据范围:\n保证 H1、H2、H3、H4 互不相同。\n参考程序:\n#include <iostream>\nusing namespace std;\nint main() {\nint H1, H2, H3, H4;\ncin >> H1 >> H2 >> H3 >> H4;\nint ans = H2;\nint d = H1 - H2;\nif (d < 0) d = -d;\nint mnd = d;\nd = H1 - H3;\nif (d < 0) d = -d;\nif (d < mnd || (d == mnd && H3 < ans))\nans = H3, mnd = d;\nd = H1 - H4;\nif (d < 0) d = -d;\nif (d < mnd || (d == mnd && H4 < ans))\nans = H4;\ncout << ans << endl;\nreturn 0;\n}",
         "samples": [],
         "tests": []
       },
       {
-        "type": "program",
         "id": "l1-p2",
+        "type": "program",
         "score": 25,
-        "input": "输入一行，包含一个整数 A，表示替换前的数。",
-        "output": "输出一行，包含一个整数，表示替换后的数。\n样例1:\n输入:\n8459045\n输出:\n8859085\n样例2:\n输入:\n123\n输出:\n123\n样例解释:\n对于样例1，输入 8459045 中有两个 4，都将其替换为了 8，得到 8859085。对于样例2，输入 123 中不包含 4，无需修改输入数字，输出 123。\n数据范围:\n0 <= A <= 100000000。\n参考程序:\n#include <iostream>\nusing namespace std;\nint main() {\nint a, b = 0, t = 1;\ncin >> a;\nwhile(a) {\nif(a % 10 == 4)\nb += t * 8;\nelse\nb += t * (a % 10);\na /= 10;\nt *= 10;\n}\ncout << b;\nreturn 0;\n}",
         "title": "",
         "statement": "",
+        "input": "输入一行，包含一个整数 A，表示替换前的数。",
+        "output": "输出一行，包含一个整数，表示替换后的数。\n样例1:\n输入:\n8459045\n输出:\n8859085\n样例2:\n输入:\n123\n输出:\n123\n样例解释:\n对于样例1，输入 8459045 中有两个 4，都将其替换为了 8，得到 8859085。对于样例2，输入 123 中不包含 4，无需修改输入数字，输出 123。\n数据范围:\n0 <= A <= 100000000。\n参考程序:\n#include <iostream>\nusing namespace std;\nint main() {\nint a, b = 0, t = 1;\ncin >> a;\nwhile(a) {\nif(a % 10 == 4)\nb += t * 8;\nelse\nb += t * (a % 10);\na /= 10;\nt *= 10;\n}\ncout << b;\nreturn 0;\n}",
         "samples": [],
         "tests": []
       }
@@ -328,7 +945,7 @@
     "createdBy": "f851e81e-2471-46e5-8e2a-0fcc4522afe1",
     "createdAt": "2026-05-09T09:47:41.922Z",
     "updatedBy": "f851e81e-2471-46e5-8e2a-0fcc4522afe1",
-    "updatedAt": "2026-05-09T10:13:57.697Z"
+    "updatedAt": "2026-05-13T02:34:03.386Z"
   },
   {
     "id": "003",

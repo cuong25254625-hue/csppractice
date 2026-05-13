@@ -1441,6 +1441,7 @@ async function renderManage(options = {}) {
   }));
   document.querySelector("#createAssignment")?.addEventListener("click", createAssignment);
   document.querySelectorAll("[data-delete-assignment]").forEach((button) => button.addEventListener("click", () => deleteAssignment(button.dataset.deleteAssignment)));
+  document.querySelectorAll("[data-delete-class]").forEach((button) => button.addEventListener("click", () => deleteClass(button.dataset.deleteClass)));
   document.querySelector("#addSelectedStudents")?.addEventListener("click", () => addStudentsToActiveClass(false));
   document.querySelector("#addAllStudents")?.addEventListener("click", () => addStudentsToActiveClass(true));
   document.querySelector("#createUser")?.addEventListener("click", createUser);
@@ -2022,6 +2023,7 @@ function renderAssignmentPublisher(classes) {
 
 function renderClassManageCard(klass) {
   const active = state.manage.classReport?.class?.id === klass.id;
+  const adminActions = isAdmin() ? `<button class="danger-btn compact-action" type="button" data-delete-class="${klass.id}">删除</button>` : "";
   return `
     <article class="class-manage-card ${active ? "active" : ""}">
       <div>
@@ -2030,6 +2032,7 @@ function renderClassManageCard(klass) {
       </div>
       <div class="class-card-actions">
         <span class="muted">${klass.studentCount} 名学生 · ${klass.assignmentCount} 个作业</span>
+        ${adminActions}
         <a class="primary-btn" href="#/manage/classes/${encodeURIComponent(klass.id)}">进入班级</a>
       </div>
     </article>
@@ -2969,6 +2972,22 @@ async function deleteAssignment(assignmentId) {
     await api(`/api/classes/${encodeURIComponent(classId)}/assignments/${encodeURIComponent(assignmentId)}`, { method: "DELETE" });
     notify("作业已移除。");
     await loadClassReport(classId, { silent: true });
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
+async function deleteClass(classId) {
+  if (!isAdmin()) return notify("只有管理员可以删除班级。");
+  const klass = (state.manage.overview?.classes || []).find((item) => item.id === classId);
+  const name = klass?.name || classId;
+  const studentCount = klass?.studentCount || 0;
+  const assignmentCount = klass?.assignmentCount || 0;
+  if (!confirm(`确定要删除班级「${name}」吗？\n\n该班级有 ${studentCount} 名学生和 ${assignmentCount} 个作业，删除后报名记录和作业将被移除。此操作不可恢复。`)) return;
+  try {
+    await api(`/api/classes/${encodeURIComponent(classId)}`, { method: "DELETE" });
+    notify("班级已删除。");
+    renderManage();
   } catch (error) {
     notify(error.message);
   }

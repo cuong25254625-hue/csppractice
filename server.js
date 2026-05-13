@@ -2930,6 +2930,24 @@ async function api(req, res) {
     return sendJson(res, 201, { class: classPayload(klass, db, user) });
   }
 
+  const classDelete = url.pathname.match(/^\/api\/classes\/([^/]+)$/);
+  if (req.method === "DELETE" && classDelete) {
+    const user = requireAdmin(req, res, db);
+    if (!user) return;
+    const classId = decodeURIComponent(classDelete[1]);
+    const klass = db.classes.find((item) => item.id === classId);
+    if (!klass || isArchived(klass)) return sendJson(res, 404, { message: "班级不存在。" });
+    // Remove enrollments for this class
+    db.enrollments = db.enrollments.filter((item) => item.classId !== classId);
+    // Remove assignments for this class
+    db.assignments = db.assignments.filter((item) => item.classId !== classId);
+    // Remove the class
+    db.classes = db.classes.filter((item) => item.id !== classId);
+    audit(db, user, "class:delete", classId);
+    saveDb(db);
+    return sendJson(res, 200, { ok: true });
+  }
+
   if (req.method === "POST" && url.pathname === "/api/classes/join") {
     const user = requireUser(req, res, db);
     if (!user) return;

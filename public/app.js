@@ -85,6 +85,8 @@ function renderInlineMarkdown(value) {
   html = html.replace(/\$([^$\n]+)\$/g, (_, formula) => `<span class="math-inline">\\(${formula}\\)</span>`);
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  // Protect arithmetic * (adjacent to digit or space) from italic parsing
+  html = html.replace(/([\d\s])\*([\d\s])/g, "$1&#42;$2");
   html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
   html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
   return html;

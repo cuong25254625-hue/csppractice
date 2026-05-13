@@ -83,3 +83,31 @@ npm run backup
 后台恢复入口：管理后台 -> 系统设置 -> 数据备份 -> 查看备份 -> 恢复。后台恢复前会自动生成一份 `pre-restore` 安全备份。
 
 命令行恢复时优先使用同一备份目录中的 `runtime.sqlite` 和 `papers.json`。恢复前先停止 PM2，并保留当前 `data/` 目录的一份副本。
+
+---
+
+## 常见问题
+
+### `git pull` 报错 `data/papers.json` 冲突
+
+**现象**：
+
+```bash
+root@server:~/csppractice# git pull origin main
+error: Your local changes to the following files would be overwritten by merge:
+data/papers.json
+Aborting
+```
+
+**原因**：服务器运行时会将试卷数据从 SQLite 自动同步回 `data/papers.json`（字段排序等格式化差异），导致该文件每次启动后都会产生本地改动，与远程仓库产生冲突。
+
+**解决方法**（每次 `git pull` 出现此错误时执行）：
+
+```bash
+git restore data/papers.json
+git pull origin main
+pm2 restart csppractice
+pm2 save
+```
+
+> 该文件由服务端运行时自动维护，丢弃本地改动不会丢失数据（试卷核心数据存储在 `data/runtime.sqlite` 中）。

@@ -1360,9 +1360,9 @@ async function renderManage(options = {}) {
     renderManage({ skipFetch: true });
   }));
   document.querySelector("#backPaperList")?.addEventListener("click", showPaperList);
+  document.querySelectorAll("[data-back-paper-list]").forEach((button) => button.addEventListener("click", showPaperList));
   document.querySelector("#newPaper")?.addEventListener("click", createNewPaper);
   document.querySelectorAll("[data-paper-editor-action='save']").forEach((button) => button.addEventListener("click", savePaperFromEditor));
-  document.querySelectorAll("[data-paper-editor-action='sync-json']").forEach((button) => button.addEventListener("click", syncBuilderToJson));
   document.querySelector("#paperCategoryInput")?.addEventListener("change", () => {
     const examType = examTypeById(document.querySelector("#paperCategoryInput").value);
     document.querySelector("#paperLevelField").hidden = !examType.levelEnabled;
@@ -1817,7 +1817,7 @@ function renderPaperEditorActions(position) {
     <div class="paper-editor-actions ${position === "top" ? "paper-editor-actions-top" : ""}">
       <div>
         <button class="primary-btn" type="button" data-paper-editor-action="save">保存试卷</button>
-        <button class="secondary-btn" type="button" data-paper-editor-action="sync-json">同步到 JSON</button>
+        <button class="secondary-btn" type="button" data-back-paper-list>返回管理试卷</button>
       </div>
       <span class="muted">日常用表单建卷；复杂导入可展开 JSON。</span>
     </div>
